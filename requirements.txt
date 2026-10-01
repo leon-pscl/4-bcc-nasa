@@ -1,0 +1,7 @@
+# Everything the app needs.  Install with:  pip install -r requirements.txt
+# (pandas 3.0.x crashed on one of the dev machines, so pandas is pinned to 2.3.3)
+flask==3.1.2
+pandas==2.3.3
+numpy==2.5.3
+matplotlib==3.11.2
+gunicorn==23.0.0

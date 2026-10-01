@@ -1,0 +1,185 @@
+/* ------------------------------------------------------------------
+   MODIS x VIIRS dashboard -- dark, compact, data-first.
+   ------------------------------------------------------------------ */
+:root {
+  --bg: #0b1020;
+  --bg-2: #101728;
+  --panel: #141c30;
+  --panel-2: #1a2340;
+  --line: #26314f;
+  --text: #e6ecff;
+  --muted: #93a0c4;
+  --modis: #3b82f6;
+  --viirs: #f97316;
+  --both: #22c55e;
+  --low: #ef4444;
+  --nominal: #eab308;
+  --high: #22c55e;
+  --accent: #38bdf8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 80% -10%, #16213f 0%, var(--bg) 55%);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+code { background: #0a0f1d; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+
+/* ---------------- top bar ---------------- */
+.topbar {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  align-items: center; justify-content: space-between;
+  padding: 14px 22px;
+  background: linear-gradient(180deg, #101a35, #0d1428);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 1200;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo { font-size: 30px; filter: drop-shadow(0 0 8px #2b6cff88); }
+.brand h1 { margin: 0; font-size: 17px; letter-spacing: .2px; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ctl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ctl select, .filters select, .filters input[type="search"] {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 9px; font-size: 13px; outline: none;
+}
+.ctl select:focus, .filters select:focus, .filters input:focus { border-color: var(--accent); }
+
+.btn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 13px; font-size: 13px; cursor: pointer;
+  text-decoration: none; display: inline-block;
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+.btn:hover { background: #223059; border-color: #3a4a7a; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: #1d4ed8; border-color: #2563eb; }
+.btn.primary:hover { background: #2563eb; }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------------- banner / loading ---------------- */
+.banner {
+  margin: 12px 22px 0; padding: 10px 14px; border-radius: 10px;
+  background: #3b1d2a; border: 1px solid #7f2f45; color: #ffd7e0; font-size: 13px;
+}
+.banner.ok { background: #11301f; border-color: #1f6b41; color: #c9f5dc; }
+
+.loading {
+  position: fixed; top: 70px; right: 22px; z-index: 1300;
+  background: #0f1a35; border: 1px solid var(--accent);
+  padding: 8px 14px; border-radius: 999px; font-size: 12px; color: var(--accent);
+}
+
+/* ---------------- layout ---------------- */
+main { padding: 18px 22px 40px; display: flex; flex-direction: column; gap: 16px; }
+.row-2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; }
+/* grid items default to min-width:auto, which lets wide canvases/tables
+   push the columns past the viewport -- clamp them instead. */
+.row-2 > .card { min-width: 0; }
+@media (max-width: 980px) { .row-2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+}
+.card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.card h2 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: .8px; color: #cfe0ff; }
+.card-foot { margin-top: 10px; display: flex; justify-content: center; }
+.hint { color: var(--muted); font-size: 12px; }
+.note { margin: 10px 0 0; line-height: 1.6; }
+
+/* ---------------- KPIs ---------------- */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.kpi {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 12px; padding: 12px 14px;
+}
+.kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); }
+.kpi .value { font-size: 24px; font-weight: 650; margin-top: 4px; }
+.kpi .sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.kpi.modis { border-left-color: var(--modis); }
+.kpi.viirs { border-left-color: var(--viirs); }
+.kpi.both { border-left-color: var(--both); }
+
+/* ---------------- charts ---------------- */
+.chart-wrap { position: relative; height: 240px; }
+.chart-wrap.tall { height: 320px; }
+
+/* ---------------- chips ---------------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer;
+}
+.chip.on { background: #12365c; border-color: var(--accent); color: #dff3ff; }
+.chip.flag { border-style: dashed; }
+
+/* ---------------- map ---------------- */
+#map {
+  height: 520px; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0a0f1e;
+}
+.map-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.dot.both { background: var(--both); }
+.dot.modis { background: var(--modis); }
+.dot.viirs { background: var(--viirs); }
+
+.leaflet-container { background: #0a0f1e; font: inherit; }
+/* satellite tiles are bright; dim them so the fire cells pop */
+.leaflet-tile-pane { filter: brightness(0.88) saturate(0.95); }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #101a35; color: var(--text); border: 1px solid var(--line);
+}
+.popup h4 { margin: 0 0 6px; font-size: 13px; }
+.popup table { font-size: 12px; border-collapse: collapse; }
+.popup td { padding: 2px 8px 2px 0; color: var(--muted); }
+.popup td:last-child { color: var(--text); text-align: right; }
+
+/* ---------------- tables ---------------- */
+.table-wrap { overflow: auto; max-height: 360px; max-width: 100%; border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: #16203a; color: #b9c8ef; text-align: left;
+  padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+#rowsTable thead th { cursor: pointer; user-select: none; }
+#rowsTable thead th:hover { color: var(--accent); }
+tbody td { padding: 7px 10px; border-bottom: 1px solid #1d2745; white-space: nowrap; }
+tbody tr:hover { background: #18244a; }
+tbody tr.sel { background: #14365e; }
+tbody tr.clickable { cursor: pointer; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid; }
+.badge.ok { color: #9df3c4; border-color: #1f6b41; background: #11301f; }
+.badge.off { color: #ffc9d2; border-color: #7f2f45; background: #3b1d2a; }
+.badge.na { color: var(--muted); border-color: var(--line); background: var(--panel-2); }
+.badge.modis { color: #cfe1ff; border-color: #2b5bb8; background: #14264a; }
+.badge.viirs { color: #ffe0c7; border-color: #a85a20; background: #3a2413; }
+.badge.low { color: #ffc9d2; border-color: #7f2f45; background: #3b1d2a; }
+.badge.nominal { color: #ffe9a8; border-color: #7a6412; background: #332a0d; }
+.badge.high { color: #9df3c4; border-color: #1f6b41; background: #11301f; }
+.badge.flag { color: #ffd9a8; border-color: #8a5a1f; background: #3a2a12; }
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.downloads { display: flex; gap: 10px; flex-wrap: wrap; }
+
+footer { padding: 16px 22px 30px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+footer p { margin: 0; }

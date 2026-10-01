@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MODIS × VIIRS Hot Spot Harmonization</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🛰️</span>
+      <div>
+        <h1>MODIS × VIIRS Hot Spot Harmonization</h1>
+        <p>NASA Space Apps · area bbox W&nbsp;-64, S&nbsp;-18, E&nbsp;-60, N&nbsp;-14 (eastern Bolivia)</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label class="ctl">
+        <span>Grid</span>
+        <select id="gridSelect"></select>
+      </label>
+      <label class="ctl">
+        <span>Day</span>
+        <select id="dayModeSelect">
+          <option value="local">local solar date</option>
+          <option value="utc">UTC date</option>
+        </select>
+      </label>
+      <button id="btnAnalyze" class="btn primary">Analyze</button>
+      <button id="btnUpload" class="btn">Upload CSVs</button>
+      <button id="btnReset" class="btn ghost">Sample data</button>
+      <input type="file" id="fileModis" accept=".csv" hidden>
+      <input type="file" id="fileViirs" accept=".csv" hidden>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+  <div id="loading" class="loading" hidden>crunching detections…</div>
+
+  <main>
+    <!-- KPI cards -->
+    <section id="kpis" class="kpis"></section>
+
+    <!-- Charts -->
+    <section class="row-2">
+      <article class="card">
+        <div class="card-head">
+          <h2>Fire cells per day</h2>
+          <span class="hint">click a bar to focus that day</span>
+        </div>
+        <div class="chart-wrap tall"><canvas id="calendarChart"></canvas></div>
+        <div id="dayChips" class="chips"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Harmonized confidence split</h2>
+          <span class="hint">% of rows per sensor</span>
+        </div>
+        <div class="chart-wrap"><canvas id="confChart"></canvas></div>
+        <p class="hint">MODIS 0–29 / 30–79 / 80–100 → low / nominal / high &nbsp;·&nbsp;
+           VIIRS l / n / h → low / nominal / high. Raw values are kept in
+           <code>confidence_raw</code>.</p>
+      </article>
+    </section>
+
+    <!-- Map -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Shared grid <span id="gridLabel"></span></h2>
+        <div class="map-tools">
+          <label class="check"><input type="checkbox" class="cat" value="both" checked><span class="dot both"></span>both sensors</label>
+          <label class="check"><input type="checkbox" class="cat" value="modis_only" checked><span class="dot modis"></span>MODIS only</label>
+          <label class="check"><input type="checkbox" class="cat" value="viirs_only" checked><span class="dot viirs"></span>VIIRS only</label>
+          <span id="mapCount" class="hint"></span>
+        </div>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <!-- Calendar + checks -->
+    <section class="row-2">
+      <article class="card">
+        <div class="card-head"><h2>Calendar</h2><span class="hint">click a row to focus that day</span></div>
+        <div class="table-wrap">
+          <table id="calendarTable">
+            <thead>
+              <tr>
+                <th>day</th><th>both</th><th>MODIS only</th><th>VIIRS only</th>
+                <th>rows M/V</th><th>MODIS↔VIIRS</th><th>flag</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head"><h2>Reference checks</h2><span class="hint">docs/agent-instructions.md</span></div>
+        <div class="table-wrap">
+          <table id="checksTable">
+            <thead><tr><th></th><th>check</th><th>computed</th><th>expected</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="checksNote" class="hint note"></p>
+      </article>
+    </section>
+
+    <!-- Detections -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Detections</h2>
+        <div class="filters">
+          <select id="fSensor"><option value="all">all sensors</option><option>MODIS</option><option>VIIRS</option></select>
+          <select id="fConf">
+            <option value="all">all confidence</option>
+            <option value="low">low</option><option value="nominal">nominal</option><option value="high">high</option>
+          </select>
+          <select id="fDay"><option value="all">all days</option></select>
+          <input type="search" id="fSearch" placeholder="search cell / satellite / day…">
+          <span id="rowCount" class="hint"></span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="rowsTable">
+          <thead>
+            <tr>
+              <th data-key="sensor">sensor</th>
+              <th data-key="day">day</th>
+              <th data-key="utc">UTC time</th>
+              <th data-key="local">local solar</th>
+              <th data-key="lat">lat</th>
+              <th data-key="lon">lon</th>
+              <th data-key="conf">confidence</th>
+              <th data-key="conf_raw">raw</th>
+              <th data-key="frp">FRP</th>
+              <th data-key="area">km²</th>
+              <th data-key="cell">cell</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card-foot">
+        <button id="btnMore" class="btn">Show 100 more</button>
+      </div>
+    </section>
+
+    <!-- Downloads -->
+    <section class="card">
+      <div class="card-head"><h2>Outputs</h2><span class="hint">written by compare.py into <code>outputs/</code></span></div>
+      <div class="downloads">
+        <a id="dlCombined" class="btn" href="#">combined.csv</a>
+        <a id="dlCalendar" class="btn" href="#">calendar.csv</a>
+        <a id="dlPng" class="btn" href="#">calendar.png</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Analysis: <code>compare.py</code> · Dashboard: <code>app.py</code> ·
+       local solar time = UTC + (longitude / 15) h · grid cells =
+       (⌊lat/g⌋, ⌊lon/g⌋)</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
