@@ -1,0 +1,97 @@
+"""Generate a labeled synthetic celldays dataset for development."""
+
+import argparse
+import json
+import math
+import random
+from datetime import date, timedelta
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from firecal.config import Settings
+from firecal.contracts import validate_celldays
+
+
+def generate(region, settings=None):
+    if settings is None:
+        settings = Settings()
+    bbox = settings.REGIONS[region]
+    w, s, e, n = bbox
+    # tiles
+    tiles = []
+    lat = math.floor(s / settings.TILE_DEG)
+    while lat * settings.TILE_DEG < n:
+        lon = math.floor(w / settings.TILE_DEG)
+        while lon * settings.TILE_DEG < e:
+            tiles.append(f"{lat}_{lon}")
+            lon += 1
+        lat += 1
+    if not tiles:
+        tiles = ["0_0"]
+
+    start = pd.to_datetime(settings.SERIES_START).date()
+    end = date.today()
+    rows = []
+    rng = random.Random(42)
+    for tile in tiles:
+        ratio = rng.uniform(1.4, 2.6)
+        for d in pd.date_range(start, end, freq="D"):
+            month = d.month
+            season = 1.0 + 2.0 * (month in (8, 9, 10))
+            base = rng.random() < 0.05 * season
+            if not base:
+                continue
+            # Aqua
+            if rng.random() < 0.6:
+                rows.append((tile, d.date(), "Aqua"))
+            # SNPP with ratio-ish frequency
+            if rng.random() < min(0.9, 0.3 * ratio * season / 2):
+                rows.append((tile, d.date(), "SNPP"))
+
+    df = pd.DataFrame(rows, columns=["tile_id", "date_local", "platform"])
+    # cell indices approximate from tile
+    def split(t):
+        a, b = t.split("_")
+        return int(a), int(b)
+
+    cell_lat = []
+    cell_lon = []
+    for t in df["tile_id"]:
+        la, lo = split(t)
+        cell_lat.append(int(la / settings.GRID_DEG * settings.TILE_DEG / settings.GRID_DEG) if False else la * int(settings.TILE_DEG / settings.GRID_DEG))
+        cell_lon.append(lo * int(settings.TILE_DEG / settings.GRID_DEG))
+    df["cell_lat_idx"] = pd.array(cell_lat, dtype="int32")
+    df["cell_lon_idx"] = pd.array(cell_lon, dtype="int32")
+    df["n_detections"] = 1
+    df["n_detections"] = df["n_detections"].astype("int32")
+    df["frp_sum"] = 1.0
+    df["date_local"] = pd.to_datetime(df["date_local"]).dt.date
+    validate_celldays(df[["cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "platform", "n_detections", "frp_sum"]])
+    return df[["cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "platform", "n_detections", "frp_sum"]]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="firecal.devdata")
+    parser.add_argument("--region", default="bolivia_east")
+    args = parser.parse_args(argv)
+    settings = Settings()
+    settings.DATA_PROCESSED = settings.DATA_PROCESSED
+    df = generate(args.region, settings)
+    out_dir = Path(settings.DATA_PROCESSED)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / "celldays.parquet"
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    df.to_parquet(tmp, index=False)
+    tmp.replace(out)
+    cov_path = out_dir / "coverage.json"
+    cov = [{"name": args.region, "bbox": [round(float(x), 4) for x in settings.REGIONS[args.region]], "start": settings.SERIES_START, "end": date.today().isoformat(), "platforms": ["Aqua", "SNPP"], "latest_date": date.today().isoformat(), "synthetic": True}]
+    cov_path.write_text(json.dumps(cov, indent=2))
+    print("synthetic celldays rows:", len(df))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
