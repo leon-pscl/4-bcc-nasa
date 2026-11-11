@@ -59,7 +59,7 @@ class Settings:
             "VIIRS": {"SP": "VIIRS_SNPP_SP", "NRT": "VIIRS_SNPP_NRT"},
         }
     )
-    FIRMS_DAY_RANGE_MAX: int = 10
+    FIRMS_DAY_RANGE_MAX: int = 5
     FIRMS_TX_BUDGET: int = 4000
     FIRMS_TX_WINDOW_S: int = 600
     FIRMS_RETRIES: int = 5
