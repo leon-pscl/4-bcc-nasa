@@ -8,6 +8,11 @@ __pycache__/
 outputs/
 uploads/
 
+# new pipeline data (git-ignored)
+data/raw/
+data/processed/
+.env
+
 # editors / agents
 .claude/
 .vscode/

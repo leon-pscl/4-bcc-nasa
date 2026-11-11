@@ -13,7 +13,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
 
-import compare
+import legacy.compare as compare
 
 BASE_DIR = Path(__file__).resolve().parent
 SAMPLE_DIR = BASE_DIR / "sample-data"
@@ -181,4 +181,5 @@ def too_large(_error):
 
 if __name__ == "__main__":
     # Development server.  In Docker we run gunicorn instead (see Dockerfile).
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    import os
+    app.run(host="0.0.0.0", port=8000, debug=os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes"))
