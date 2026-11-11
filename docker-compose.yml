@@ -1,20 +1,17 @@
 services:
   web:
     build: .
-    image: modis-viirs-dashboard
-    container_name: modis-viirs-dashboard
     ports:
       - "8000:8000"
+    env_file: .env
     volumes:
-      # keep the analysis outputs and any uploaded CSVs on the host
-      - ./outputs:/app/outputs
-      - ./uploads:/app/uploads
-      # edit the sample files without rebuilding the image
-      - ./sample-data:/app/sample-data:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
+      - ./data:/app/data
+  updater:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    command: >
+      sh -c "while true; do python -m firecal.pipeline update --all || true; sleep 86400; done"
+    depends_on:
+      - web

@@ -1,9 +1,6 @@
 .git
 .venv
-__pycache__
-*.pyc
-.pytest_cache
-outputs
-uploads
-docs
-*.md
+frontend/node_modules
+frontend/dist
+data
+.env

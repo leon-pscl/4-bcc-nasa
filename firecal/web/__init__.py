@@ -16,7 +16,7 @@ def create_app(settings=None):
     register_routes(app, settings)
 
     # serve frontend dist if present
-    dist = Path("frontend/dist")
+    dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
     if dist.exists():
         @app.route("/")
         def index():
