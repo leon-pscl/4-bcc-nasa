@@ -74,11 +74,10 @@ def read_firms_csv(path) -> pd.DataFrame:
         df["type"] = pd.array([pd.NA] * len(df), dtype="Int8")
 
     # uid
-    def make_uid(row):
-        key = f"{row['platform']}|{row['latitude']}|{row['longitude']}|{row['acq_datetime_utc']}"
-        return hashlib.sha1(key.encode()).hexdigest()
-
-    df["uid"] = df.apply(make_uid, axis=1)
+    df["uid"] = [
+        hashlib.sha1(f"{p}|{la}|{lo}|{dt}".encode()).hexdigest()
+        for p, la, lo, dt in zip(df["platform"], df["latitude"], df["longitude"], df["acq_datetime_utc"])
+    ]
 
     # numeric casts
     for c in ("latitude", "longitude", "frp", "scan", "track", "brightness", "bright_t31"):

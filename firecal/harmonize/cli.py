@@ -22,16 +22,28 @@ def main(argv=None):
     if not celldays_path.exists():
         raise SystemExit("celldays.parquet missing")
     celldays = pd.read_parquet(celldays_path)
-    # calibration years present?
+    # meta check
+    meta_path = proc / "celldays.meta.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        if meta.get("grid_deg") != settings.GRID_DEG or meta.get("tile_deg") != settings.TILE_DEG:
+            raise SystemExit("celldays.meta.json does not match Settings")
     years = pd.to_datetime(celldays["date_local"]).dt.year.unique()
-    if not (settings.CALIBRATION_YEARS[0] in years):
-        raise SystemExit("calibration years not in data; need real archive or devdata? devdata has them")
+    for y in range(settings.CALIBRATION_YEARS[0], settings.CALIBRATION_YEARS[1] + 1):
+        if y not in years:
+            raise SystemExit("calibration years not in data")
     calibration = fit_calibration(celldays, settings)
-    calibration.to_parquet(proc / "calibration.parquet", index=False)
+    tmp = (proc / "calibration.parquet").with_suffix(".parquet.tmp")
+    calibration.to_parquet(tmp, index=False)
+    tmp.replace(proc / "calibration.parquet")
     harmonized = build_harmonized(celldays, calibration, settings)
-    harmonized.to_parquet(proc / "harmonized_daily.parquet", index=False)
+    tmp = (proc / "harmonized_daily.parquet").with_suffix(".parquet.tmp")
+    harmonized.to_parquet(tmp, index=False)
+    tmp.replace(proc / "harmonized_daily.parquet")
     v = validate(celldays, calibration, settings)
-    (proc / "validation.json").write_text(json.dumps(v, indent=2))
+    tmp = (proc / "validation.json").with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(v, indent=2))
+    tmp.replace(proc / "validation.json")
     print("calibration rows:", len(calibration))
     print("harmonized rows:", len(harmonized))
     return 0

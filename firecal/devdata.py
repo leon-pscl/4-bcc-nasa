@@ -45,9 +45,9 @@ def generate(region, settings=None):
             if not (rng.random() < 0.05 * season):
                 continue
             if rng.random() < 0.6:
-                rows.append((base_cell_lat, base_cell_lon, tile, d.date(), "Aqua"))
+                rows.append((base_cell_lat + rng.randrange(grid_per_tile), base_cell_lon + rng.randrange(grid_per_tile), tile, d.date(), "Aqua"))
             if rng.random() < min(0.9, 0.3 * ratio * season / 2):
-                rows.append((base_cell_lat, base_cell_lon, tile, d.date(), "SNPP"))
+                rows.append((base_cell_lat + rng.randrange(grid_per_tile), base_cell_lon + rng.randrange(grid_per_tile), tile, d.date(), "SNPP"))
 
     df = pd.DataFrame(rows, columns=["cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "platform"])
     df["n_detections"] = 1
@@ -66,7 +66,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     settings = Settings()
     df = generate(args.region, settings)
-    out_dir = Path(settings.DATA_PROCESSED)
+    out_dir = Path("data/synthetic/processed")
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "celldays.parquet"
     tmp = out.with_suffix(out.suffix + ".tmp")
@@ -75,6 +75,21 @@ def main(argv=None):
     cov_path = out_dir / "coverage.json"
     cov = [{"name": args.region, "bbox": [round(float(x), 4) for x in settings.REGIONS[args.region]], "start": settings.SERIES_START, "end": date.today().isoformat(), "platforms": ["Aqua", "SNPP"], "latest_date": date.today().isoformat(), "synthetic": True}]
     cov_path.write_text(json.dumps(cov, indent=2))
+    # run harmonize in same dir
+    import os
+    os.environ["DATA_PROCESSED"] = str(out_dir)
+    settings.DATA_PROCESSED = str(out_dir)
+    from firecal.harmonize.calibrate import fit_calibration
+    from firecal.harmonize.apply import build_harmonized
+    from firecal.harmonize.validate import validate
+    import json as _json
+    celldays = pd.read_parquet(out)
+    calibration = fit_calibration(celldays, settings)
+    calibration.to_parquet(out_dir / "calibration.parquet", index=False)
+    harmonized = build_harmonized(celldays, calibration, settings)
+    harmonized.to_parquet(out_dir / "harmonized_daily.parquet", index=False)
+    v = validate(celldays, calibration, settings)
+    (out_dir / "validation.json").write_text(_json.dumps(v, indent=2))
     print("synthetic celldays rows:", len(df))
     return 0
 

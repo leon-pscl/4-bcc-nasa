@@ -57,9 +57,9 @@ def fit_calibration(celldays, settings=None):
     tiles = sorted(df["tile_id"].unique().tolist())
     months = list(range(1, 13))
 
-    tm_lookup = {(r["tile_id"], int(r["month"])): (int(r["modis"]), int(r["viirs"])) for _, r in tm.iterrows()}
-    t_lookup = {r["tile_id"]: (int(r["modis"]), int(r["viirs"])) for _, r in t.iterrows()}
-    am_lookup = {int(r["month"]): (int(r["modis"]), int(r["viirs"])) for _, r in am.iterrows()}
+    tm_lookup = {(row["tile_id"], int(row["month"])): (int(row["modis"]), int(row["viirs"])) for row in tm.to_dict("records")}
+    t_lookup = {row["tile_id"]: (int(row["modis"]), int(row["viirs"])) for row in t.to_dict("records")}
+    am_lookup = {int(row["month"]): (int(row["modis"]), int(row["viirs"])) for row in am.to_dict("records")}
 
     rows = []
     for tile in tiles:

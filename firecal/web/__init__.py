@@ -25,6 +25,12 @@ def create_app(settings=None):
         @app.route("/assets/<path:p>")
         def assets(p):
             return send_from_directory(dist / "assets", p)
+
+        @app.route("/<path:path>")
+        def spa(path):
+            if path.startswith("api/") or path.startswith("health") or path.startswith("assets/"):
+                return ("not found", 404)
+            return send_from_directory(dist, "index.html")
     else:
         @app.route("/")
         def index():

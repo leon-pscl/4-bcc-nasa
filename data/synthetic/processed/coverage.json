@@ -1,0 +1,19 @@
+[
+  {
+    "name": "bolivia_east",
+    "bbox": [
+      -64.0,
+      -18.0,
+      -60.0,
+      -14.0
+    ],
+    "start": "2003-01-01",
+    "end": "2026-11-11",
+    "platforms": [
+      "Aqua",
+      "SNPP"
+    ],
+    "latest_date": "2026-11-11",
+    "synthetic": true
+  }
+]

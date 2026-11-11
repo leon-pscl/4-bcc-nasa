@@ -38,8 +38,8 @@ def cmd_status(args):
     if not key:
         print("FIRMS_MAP_KEY is not set. Sign up at https://firms.modaps.eosdis.nasa.gov/api/map_key/")
         return 1
+    print("View key status at the link in your MAP_KEY email.")
     client = FirmsClient(key, settings.FIRMS_BASE_URL)
-    print("key_status:", client.key_status())
     for src in ("MODIS_SP", "VIIRS_SNPP_SP", "MODIS_NRT", "VIIRS_SNPP_NRT"):
         try:
             avail = client.data_availability(src)

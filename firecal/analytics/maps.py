@@ -21,11 +21,11 @@ def map_cells(area: Area, start, end, month=None, settings=None):
     if month:
         y, m = month.split("-")
         df = df[(pd.to_datetime(df["date_local"]).dt.year == int(y)) & (pd.to_datetime(df["date_local"]).dt.month == int(m))]
-    mask = df.apply(lambda r: area.contains_cell(int(r["cell_lat_idx"]), int(r["cell_lon_idx"]), grid), axis=1)
+    mask = [area.contains_cell(int(r["cell_lat_idx"]), int(r["cell_lon_idx"]), grid) for r in df.to_dict("records")]
     df = df[mask]
     agg = df.groupby(["cell_lat_idx", "cell_lon_idx"])["value"].sum().reset_index()
     cells = []
-    for _, r in agg.iterrows():
+    for r in agg.to_dict("records"):
         lat = (r["cell_lat_idx"] + 0.5) * grid
         lon = (r["cell_lon_idx"] + 0.5) * grid
         cells.append({"lat": float(lat), "lon": float(lon), "value": float(r["value"])})

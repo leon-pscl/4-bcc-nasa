@@ -25,7 +25,7 @@ def _monthly_totals(celldays, calibration, settings, years):
         return float(sub.iloc[0]["k"]) if not sub.empty else 1.0
 
     aqua = aqua.copy()
-    aqua["value"] = aqua.apply(lambda r: k(r["tile_id"], r["date_local"].month), axis=1)
+    aqua["value"] = [k(r["tile_id"], r["date_local"].month) for r in aqua.to_dict("records")]
     modis_monthly = aqua.groupby(["year", "month"])["value"].sum()
     viirs_monthly = snpp.groupby(["year", "month"]).size()
 

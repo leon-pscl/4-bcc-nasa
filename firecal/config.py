@@ -64,6 +64,8 @@ class Settings:
     FIRMS_TX_WINDOW_S: int = 600
     FIRMS_RETRIES: int = 5
     NRT_REFRESH_DAYS: int = 7
+    GAPFILL_ENABLED: bool = False
+    GAPFILL_MIN_AQUA_CELLDAYS: int = 20
     VIIRS_SP_START: str = "2012-01-20"
     UI_UNIT_LABEL: str = "Hotspots (harmonized)"
 
