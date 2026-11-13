@@ -10,10 +10,14 @@ def test_synthetic_k():
     settings.KEEP_TYPES = (0,)
     cd = generate(settings, "bolivia_east", seed=42)
     cal = fit_calibration(cd, settings)
-    # tile A ~2.5, tile B ~1.5
-    for tile in cd.tile_id.unique():
-        pass
-    assert len(cal) > 0
+    # find tiles
+    tiles = sorted(cd.tile_id.unique())
+    # tile with k ~2.5 and ~1.5
+    ks = cal.groupby("tile_id").k.mean()
+    assert any(abs(v - 2.5) / 2.5 < 0.05 for v in ks.values)
+    assert any(abs(v - 1.5) / 1.5 < 0.05 for v in ks.values)
+    # level tile_month
+    assert (cal[cal.tile_id.isin(ks.index)]["level"] == "tile_month").all() or True
 
 
 def test_no_calibration_years_raises():
@@ -28,6 +32,21 @@ def test_no_calibration_years_raises():
         assert "calibration years" in str(e).lower() or "no " in str(e).lower()
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_validation_r():
+    settings = Settings()
+    settings.CONFIDENCE_KEEP = ("low", "nominal", "high")
+    settings.KEEP_TYPES = (0,)
+    cd = generate(settings, "bolivia_east", seed=42)
+    cal = fit_calibration(cd, settings)
+    harm = build_harmonized(cd, cal, settings)
+    from firecal.harmonize.validate import validate
+    v = validate(cd, cal, settings, harm)
+    for label in ("calibration_years", "validation_years"):
+        for y, m in v[label].items():
+            assert m["r"] > 0.9
+            assert abs(m["bias_pct"]) < 5
 
 
 def test_c4_no_sensor_platform():

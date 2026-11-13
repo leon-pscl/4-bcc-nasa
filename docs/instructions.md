@@ -9,12 +9,23 @@ Read it together with:
 - `docs/frontend-tasks.md`: what each UI element looks like and how it behaves.
 - `docs/ui_settings.md`: fonts, colors and style, applied as `frontend-tasks.md` section 2
   describes.
+- `docs/decisions.md`: every decision made after the plan was first written, with the reason.
+  This file already reflects them; the log says why.
 
 **Which file wins when they disagree:** `frontend-tasks.md` wins on the UI's layout, look and
-behavior. This file wins on everything else: contracts, approved dependencies, the working
-agreement, tests and the backend.
+behavior, except for the overrides listed in Stage 6 here. This file wins on everything else:
+contracts, approved dependencies, the working agreement, tests and the backend. If this file
+and `decisions.md` ever disagree, stop and ask the owner.
 
-**Next stage to build:** Stage 0 (section 7).
+**Status (13 Nov 2026):** Stages 0, 1a, 1b and 2 are done. Stage 3 is in rework. Stages 4 and
+5 are placeholders. **Next:** Stage 0b (CI, regions file, decision log), then finish Stage 3,
+then Stage S (scale and regions). Section 7 gives the full order.
+
+**Built to grow.** The app has to take on more regions, more years, more users and new
+satellites without rewrites. Concretely: regions are data, not code (section 5.1); stored data
+is partitioned by region and year (section 6); calibration is keyed by satellite (C3); every
+response carries a data version so it can be cached (C7); and CI checks every push
+(section 3). Section 4 lists what we deliberately don't build yet.
 
 ---
 
@@ -56,20 +67,22 @@ Branch `pascual` was reset on 13 Nov 2026 (commit `a5e4cfb`) to start from scrat
 earlier attempt is still in the history at commit `82a4528`. Use it **for reference only**:
 don't restore its files, except `sample-data/` (Stage 0).
 
-What the repo contains now:
+Where each stage stands (13 Nov 2026, evening):
 
-| Path | What it is |
+| Stage | State |
 |---|---|
-| `docs/instructions.md` | This file |
-| `docs/frontend-tasks.md` | UI spec: layout, components, behavior, frontend task list |
-| `docs/ui_settings.md` | Fonts, colors, style, icon and animation options |
-| `docs/dashboard.jpg`, `docs/refs/*.png` | Screenshots of the UI draft |
-| `frontend/` | Vite + React 18 + TypeScript (`strict`) app with one component, `MapCard` (below) |
-| `Dockerfile`, `docker-compose.yml` | Written for the target layout (section 4). `docker build` fails until `firecal/`, `app.py` and `requirements.txt` exist |
-| `.env.example`, `.dockerignore` | Already set up for the target layout |
-| `.gitignore` | Covers `.env`, `data/raw/` and `data/processed/`, but **not** `frontend/node_modules/` or `frontend/dist/` (that rule was in a `frontend/.gitignore` the reset deleted). Add them in 6a |
+| 0 Groundwork | Done: `firecal/` package, `config.py`, `contracts.py` (C1–C4), pytest setup, pinned requirements, `sample-data/` restored |
+| 1a Fetch | Done. The key-status URL is a guess and FIRMS answers "Invalid API call", so the near-limit pause is off (the rate limiter still applies). Fix or remove it in Stage S |
+| 1b Ingest | Done for small areas. It loads the whole store into memory and processes rows one by one, so it can't handle the two regions yet (Stage S) |
+| 2 Cell-days | Done for small areas; same limit (Stage S) |
+| 3 Harmonize | In rework. Calibration now counts cell-days. Still wrong: validation compares VIIRS with the harmonized table instead of Aqua × k, the synthetic generator doesn't produce its intended ratios, and the tests don't check results |
+| 4 Analytics, 5 API | Placeholders only (commit `2d2b167`). Rebuild them from this file |
+| 6 Frontend | Map card partly built (below) |
+| 7 Pipeline, Docker | `Dockerfile` and `docker-compose.yml` exist; nothing else |
 
-There is **no backend**: no `firecal/`, no `app.py`, no `requirements.txt`, no tests, no data.
+Other files: `docs/` (this file, `frontend-tasks.md`, `ui_settings.md`, `dashboard.jpg`,
+`refs/`), `.env.example`, `.gitignore` (data, Python, Node and `.env` are ignored) and
+`.dockerignore`.
 
 **`frontend/` today** (part of Stage 6b, built early):
 
@@ -99,7 +112,7 @@ Backend:
 - `/api/summary` skipped the coverage check that `/api/calendar` ran. Every area endpoint
   runs it (Stage 5).
 - "This month" depended on the server clock, so results shifted with time zones. See
-  section 5, "Which day is today".
+  section 5.2.
 - The API had no tests, and the mock files didn't match the contract (the calendar mock had
   no `query.bbox`). See Stage 5.
 
@@ -112,6 +125,20 @@ Frontend:
 - There was no Vite proxy, so `/api/*` returned `index.html` in development.
 - The API client never checked `res.ok`, and the zod schemas covered only part of each
   response.
+
+From the first day of the fresh start:
+
+- **k was computed from detections, not cell-days.** On a test with a true ratio of 2.5 it
+  returned 10, which would have made every MODIS year about 4× too high. Calibration counts
+  rows of C2 (one row = one cell-day).
+- **Tests that check nothing passed.** `assert True`, or only `len(x) > 0`, while the code was
+  wrong. A test asserts the expected value (section 3).
+- **A fix was reported as done but never committed.** Reports now name the commit and the
+  test for each fix, and CI shows the result on GitHub (section 3).
+- **The synthetic generator overwrote the real cell-days file** and didn't label its output.
+  Synthetic data lives in its own folder and always carries `synthetic: true`.
+- **An external URL was guessed** (FIRMS key status). Confirm URLs against a real response
+  before relying on them.
 
 ### 2.3 How the team gets data by hand (Stage 1a automates this)
 
@@ -137,11 +164,21 @@ With no date at the end of the URL, this returns only **the last 5 days**. The c
 - Loop over 5-day chunks, stay under the transaction limit, cache every response and resume
   after interruptions.
 
-**In the app, the map's box never triggers a FIRMS download.** Fetching runs offline, once
-per area (Stage 1a, then the pipeline in Stage 7). A full 2003-to-today backfill is about
-14,000 transactions, or about 35 minutes. The web app only reads the processed files, and a
-box outside the fetched areas gets a 422 with the list of covered areas. The browser never
-calls FIRMS: the key is part of every FIRMS URL.
+**How the app gets its data (decisions D6, D7).** The app covers fixed **regions**, each
+loaded once and then topped up daily (section 5.1). Two sources feed each region:
+
+| Period | Source | Cost |
+|---|---|---|
+| 2003 (MODIS) or 2012 (VIIRS) to the last complete year | FIRMS **yearly country files**, one CSV per country, year and sensor, linked from <https://firms.modaps.eosdis.nasa.gov/country/>. Download the files for every country the region's box touches, then clip the rows to the box | No API transactions |
+| From the day after the yearly files end, to today; then daily | The area API above, for the region's box | One transaction per requested day per source, **whatever the area's size**: about 650 for the rest of a year (2 sources), a handful per day after that |
+
+A full 2003-to-today history from the API alone would cost about 14,000 transactions per
+region (about 35 minutes at our budget, often more), which is why the history comes from the
+yearly files.
+
+**In the app, the map's box never triggers a FIRMS download.** The web app only reads the
+processed files. A box outside the covered regions gets a 422 with the list of covered
+regions. The browser never calls FIRMS: the key is part of every FIRMS URL.
 
 ### 2.4 Processing rules from the first prototype
 
@@ -227,7 +264,19 @@ are smaller. That's why the series counts cells, not rows (Stage 2).
    the key with `***` everywhere: logs, exceptions, the manifest and test output.
 9. **Synthetic data must always be labeled.** Any dataset made by `firecal/devdata.py` sets
    `synthetic: true` in `coverage.json`, and the UI shows a visible "SYNTHETIC DATA" banner
-   whenever it is used.
+   whenever it is used. Synthetic data is written to `data/synthetic/`, never over real data.
+10. **CI must be green.** Every push runs `pytest` and `npm run check` on GitHub (Stage 0b).
+    Merge into `pascual` only when CI passes on the branch.
+11. **Tests check results.** Every test asserts an expected value: a count, a ratio, a row, a
+    message. `assert True`, or `len(x) > 0` on its own, is not a test. When a stage's "Done
+    when" names a number, a test asserts that number.
+12. **Reports show evidence, not just a test count.** A stage report gives:
+    - the commit hash
+    - the names of the tests added
+    - every number the stage's "Done when" asks for (counts, k values, metrics, timings)
+    - for each fix from a review: the commit and the test that covers it
+13. **No placeholders under a stage's name.** Unfinished work is committed as `wip: ...` on its
+    stage branch and isn't merged.
 
 ---
 
@@ -246,6 +295,7 @@ are smaller. That's why the series counts cells, not rows (Stage 2).
 | Lint | ESLint with `typescript-eslint` and `eslint-plugin-jsx-a11y`; TypeScript `strict: true` |
 | Styling | CSS Modules (built into Vite), with the tokens from `frontend-tasks.md` section 2. No UI kit or Tailwind unless the owner asks |
 | Runtime | One Docker image. A Node build stage compiles the frontend; the final image is Python only and Flask serves `frontend/dist/` |
+| CI | GitHub Actions: `pytest` on Python 3.12 and `npm ci && npm run check` in `frontend/`, on every push and pull request (Stage 0b) |
 
 **Approved frontend dependencies:** `react`, `react-dom`, `typescript`, `vite`,
 `@vitejs/plugin-react`, `leaflet`, `react-leaflet`, `@types/leaflet`, `chart.js`,
@@ -263,14 +313,18 @@ Development setup:
 - In production, `npm run build` writes `frontend/dist/`, and Flask serves it at `/`.
 
 ```
+.github/workflows/ci.yml      Stage 0b: tests on every push and pull request
+config/regions.json           regions and starter areas (section 5.1)
 firecal/                      Python package (all backend code)
   __init__.py
   config.py                   Settings (section 5) + env overrides
+  regions.py                  loads and validates config/regions.json (Stage 0b)
+  version.py                  reads and writes data_version.json (C7)
   contracts.py                column lists, dtypes and validate_*() helpers (section 6)
   devdata.py                  synthetic multi-year dataset for development (Stage 3)
-  pipeline.py                 Stage 7: runs fetch -> ingest -> cells -> harmonize in one command
-  fetch/                      Stage 1a: FIRMS API -> raw CSV cache (download only, no parsing)
-    client.py  plan.py  ratelimit.py  cache.py  cli.py
+  pipeline.py                 Stage 7: add-region and update, chaining the stages below
+  fetch/                      Stage 1a: FIRMS -> raw CSV cache (download only, no parsing)
+    client.py  plan.py  ratelimit.py  cache.py  country.py  cli.py
   ingest/                     Stage 1b: FIRMS CSV -> detections
     firms_csv.py  store.py  cli.py
   cells/                      Stage 2: detections -> cell-days
@@ -306,12 +360,22 @@ frontend/                     Stage 6: React + TypeScript + Vite
       AppHeader/  SyntheticBanner/  MapCard/  SidePanel/  ComparisonsPanel/  Watchlist/
       MethodsPanel/  BurningCalendar/  HotspotTable/  Downloads/
     test/setup.ts
-data/raw/firms/               raw API responses + manifest.jsonl, written by Stage 1a (git-ignored)
+data/raw/firms/               raw API responses + manifest.jsonl (git-ignored)
+data/raw/firms_country/       yearly country CSVs + manifest_country.jsonl (git-ignored)
 data/raw/manual/              CSVs downloaded by hand, if any (git-ignored)
-data/processed/               Parquet outputs + json metadata (git-ignored)
+data/processed/               partitioned Parquet datasets + json metadata (section 6; git-ignored)
+data/synthetic/               synthetic datasets, always labeled (git-ignored)
+docs/decisions.md             decision log
 tests/
   fixtures/
 ```
+
+**Not built yet, on purpose (decision D12).** No database server (Postgres/PostGIS), no
+Kubernetes, no microservices, no job queue, no user accounts. None of them solves a problem
+this app has: the data is read-only for users and has a single writer, the pipeline. If the
+app outgrows one machine, the Parquet datasets move to object storage (DuckDB reads them
+there) and the API runs as several read-only copies behind the same data version. That's a
+migration, not a rewrite. Ask the owner before adding any of these.
 
 ---
 
@@ -335,27 +399,85 @@ in one place.
 | `VALIDATION_YEARS` | `(2018, 2021)` inclusive | Held-out years to test the factors (MODIS orbits drift late in the mission, so check per-year metrics before extending either window) |
 | `MIN_CALIBRATION_CELLDAYS` | `30` | Below this, fall back to a broader calibration level |
 | `MIN_BASELINE_YEARS` | `5` | Fewer complete years than this triggers a baseline warning |
-| `MAX_AREA_KM2` | `500_000` | Larger areas are rejected. About 16,000 grid cells at 0.05°, under `MAX_MAP_CELLS`, so the map can show full detail. **Open:** the current UI dropped its limit message; the owner decides whether to keep the limit (and restore the message) or change it |
+| `MAX_AREA_KM2` | `500_000` | Applies to an analyzed area, not to a region. Larger areas are rejected. About 16,000 grid cells at 0.05°, under `MAX_MAP_CELLS`, so the map can show full detail. **Open:** the current UI dropped its limit message; the owner decides whether to keep the limit (and restore the message) or change it |
 | `MAX_MAP_CELLS` | `20_000` | Above this, the map aggregates to a coarser grid |
-| `REGIONS` | `{"bolivia_east": (-64, -18, -60, -14), "luzon_example": (121.116028, 14.583583, 121.643372, 15.445738)}` | Demo regions (W, S, E, N). `luzon_example` is the box from the team's data-access guide |
+| `REGIONS`, `STARTER_AREAS` | Loaded from `config/regions.json` (section 5.1) | Regions are data, so adding one needs no code change |
+| `TEST_REGIONS` | `{"bolivia_east": (-64, -18, -60, -14), "luzon_example": (121.116028, 14.583583, 121.643372, 15.445738)}` | Small boxes (W, S, E, N) for tests, the sample data and local experiments. Use them only with a separate `DATA_PROCESSED`; the API serves only the regions in `regions.json` |
 | `FIRMS_BASE_URL` | `https://firms.modaps.eosdis.nasa.gov` | |
 | `FIRMS_SOURCES` | MODIS: `MODIS_SP` / `MODIS_NRT`; VIIRS: `VIIRS_SNPP_SP` / `VIIRS_SNPP_NRT` | SP for history, NRT only after SP ends |
-| `FIRMS_DAY_RANGE_MAX` | `5` | API limit per request |
+| `FIRMS_DAY_RANGE_MAX` | `5` | API limit per request. FIRMS's page says 1..10, but a real request with 10 was rejected (decision D5) |
 | `FIRMS_TX_BUDGET` | `4000` per `600` s | Stays below the 5,000 per 10 minutes key limit. Count each requested day as one transaction (worst case; FIRMS says multi-day requests may count as several) |
 | `FIRMS_RETRIES` | `5`, exponential backoff from 5 s | FIRMS sometimes returns 504s |
 | `NRT_REFRESH_DAYS` | `7` | NRT chunks ending within this many days of today are always fetched again, because NRT data keeps changing |
 | `VIIRS_SP_START` | `2012-01-20` | First date of VIIRS 375 m data; never request VIIRS before this |
+| `REFERENCE_PLATFORM` | `"SNPP"` | The satellite every other one is calibrated to. Aqua MODIS is calibrated to it now; NOAA-20/21 can be added later without changing C4 (decision D9) |
+| `API_CACHE_ENTRIES` | `512` | Size of the server-side response cache (Stage 5). Entries are keyed by data version, so a pipeline run makes them stale automatically |
 | UI unit label | "Hotspots (harmonized)" | The Methods tab explains the unit: one fire cell-day in VIIRS-equivalent terms |
 
 Paths (`DATA_RAW`, `DATA_PROCESSED`) and `FIRMS_MAP_KEY` come from environment variables, with
 defaults `data/raw` and `data/processed`. `.env.example` already exists.
 
-**Which day is "today".** The analytics functions take `today` as a parameter (section 3).
-In the API, `today` is the **latest data date** of the coverage region the area falls in
-(`latest_date` in `coverage.json`; if the area overlaps several regions, the earliest of
-their latest dates). It is never the server clock. This keeps "this month vs. median" stable
+### 5.1 Regions file (`config/regions.json`, decision D6)
+
+```json
+{
+  "regions": [
+    {"name": "southeast_asia", "label": "Southeast Asia",
+     "bbox": [92.0, -11.0, 141.0, 28.5],
+     "countries": ["Myanmar", "Thailand", "Laos", "Cambodia", "Vietnam", "Malaysia",
+                   "Singapore", "Brunei", "Indonesia", "Philippines", "Timor-Leste",
+                   "China", "Taiwan", "India", "Bangladesh"],
+     "history": "country_files"},
+    {"name": "amazon", "label": "Amazon",
+     "bbox": [-80.0, -20.0, -44.0, 6.0],
+     "countries": ["Brazil", "Bolivia", "Peru", "Ecuador", "Colombia", "Venezuela",
+                   "Guyana", "Suriname", "French Guiana", "Paraguay", "Chile"],
+     "history": "country_files"}
+  ],
+  "starter_areas": [
+    {"name": "central_kalimantan", "label": "Central Kalimantan", "region": "southeast_asia",
+     "bbox": [110.7, -3.6, 115.9, 0.8]},
+    {"name": "northern_thailand", "label": "Northern Thailand", "region": "southeast_asia",
+     "bbox": [97.3, 17.0, 101.5, 20.5]},
+    {"name": "luzon_example", "label": "Luzon example", "region": "southeast_asia",
+     "bbox": [121.116028, 14.583583, 121.643372, 15.445738]},
+    {"name": "rondonia", "label": "Rondônia", "region": "amazon",
+     "bbox": [-66.0, -13.7, -60.0, -7.9]},
+    {"name": "bolivia_east", "label": "East Bolivia", "region": "amazon",
+     "bbox": [-64, -18, -60, -14]}
+  ]
+}
+```
+
+Rules (Stage 0b tests them):
+
+- **Regions don't overlap.** Each detection belongs to exactly one region partition.
+- **`countries` lists every country the box touches**, so no part of the box silently shows
+  zero fires. Use FIRMS's own country names; check them against the country file list.
+  Southeast Asia's box also clips slivers of Bhutan, Japan's southern islands, Palau and the
+  Papua New Guinea border. Add those only if their files are small.
+- **`history`** is `country_files` (yearly files, then the API) or `api` (the API for
+  everything, for a small region or one with no country files).
+- **Every starter area lies inside its region and is at most `MAX_AREA_KM2`.** Sizes:
+  Central Kalimantan 282,742 km², Northern Thailand 172,083, Luzon example 5,429, Rondônia
+  422,476, East Bolivia 190,127.
+- **Adding a region** is one entry here plus `python -m firecal.pipeline add-region <name>`
+  (Stage 7). No code changes.
+
+### 5.2 Which day is "today"
+
+The analytics functions take `today` as a parameter (section 3).
+In the API, `today` is the **latest data date** of the region the area falls in (`latest_date`
+in `data_version.json`, C7). It is never the server clock. This keeps "this month vs. median" stable
 across time zones: a browser in Manila (UTC+8) can be a day ahead of a UTC server. An `end`
 later than the latest data date is rejected with a 400.
+
+### 5.3 Data version (decision D10)
+
+Every pipeline run ends by writing `data_version.json` (C7): a version string plus each
+region's latest data date. The API puts the version in every response and in an `ETag`
+header, and keys its response cache on it. Answers stay cached until the data changes, then
+refresh by themselves. `/health` uses it to show how fresh each region is.
 
 ---
 
@@ -366,6 +488,14 @@ columns and dtypes for each table and a `validate_<table>(df)` function that rai
 error on any mismatch. Each writer validates before saving, and each reader validates after
 loading. Every writer saves to a temporary file and then renames it, so readers (the web app
 during a daily update) never see a half-written file.
+
+**Partitioning (decision D8).** C1, C2 and C4 are Parquet datasets split by region and year:
+`<table>/region=<name>/year=<YYYY>/part-0.parquet`. This is Hive-style, so DuckDB reads `region`
+and `year` as columns and skips partitions a query doesn't need. A writer rebuilds one
+partition at a time and swaps it in with a rename. A daily update only rebuilds the
+current year's partitions. The column tables below describe the rows inside a partition.
+Nothing loads a whole dataset into pandas: heavy steps run in DuckDB, or one partition at a
+time.
 
 ### C0 raw cache `data/raw/firms/` (written by Stage 1a)
 
@@ -381,7 +511,12 @@ during a daily update) never see a half-written file.
 - A response with only the header row is a valid result (no fires). It is saved and
   recorded, so it isn't fetched again.
 
-### C1 `detections.parquet` (written by Stage 1b)
+**Country files** (Stage S): `data/raw/firms_country/<SENSOR>/<YEAR>/<Country>.csv`, as
+downloaded (or extracted from FIRMS's yearly archive), written atomically.
+`manifest_country.jsonl` has one line per file:
+`{sensor, year, country, rows, sha256, fetched_at, path, source_url}`.
+
+### C1 `detections/` dataset (written by Stage 1b)
 
 | column | type | notes |
 |---|---|---|
@@ -402,11 +537,11 @@ during a daily update) never see a half-written file.
 | `version` | string | |
 | `source_file` | string | |
 
-Also written: `coverage.json`, a list of `{name, bbox:[W,S,E,N], start, end, platforms,
-latest_date, synthetic}`. Coverage is the **requested** area and dates, not the extent of
-the data found.
+Also written: `coverage.json`, one entry per region: `{name, label, bbox:[W,S,E,N],
+countries, start, end, platforms, latest_date, synthetic}`. Coverage is the **requested**
+region and dates, not the extent of the data found.
 
-### C2 `celldays.parquet` + `celldays.meta.json` (written by Stage 2)
+### C2 `celldays/` dataset + `celldays.meta.json` (written by Stage 2)
 
 One row per (cell, local date, platform) with at least one detection that passes the filters.
 
@@ -427,13 +562,16 @@ message, if they don't match.
 
 | column | type | notes |
 |---|---|---|
+| `region` | string | calibration is fitted per region |
+| `platform` | string | the satellite being scaled: `Aqua` today; `NOAA20` or `NOAA21` later |
+| `reference` | string | the satellite it's scaled to: `REFERENCE_PLATFORM` (`SNPP`) |
 | `tile_id` | string | or `ALL` |
 | `month` | int8 | 1–12, or 0 for all months |
 | `k` | float64 | VIIRS cell-days / MODIS cell-days |
 | `modis_celldays`, `viirs_celldays` | int64 | sample behind `k` |
 | `level` | string | `tile_month`, `tile`, `all_month`, `all` |
 
-### C4 `harmonized_daily.parquet` (written by Stage 3)
+### C4 `harmonized_daily/` dataset (written by Stage 3)
 
 | column | type | notes |
 |---|---|---|
@@ -445,13 +583,15 @@ message, if they don't match.
 
 **No `sensor` or `platform` column.** This is the table every analysis reads.
 
-### C5 `validation.json` (written by Stage 3)
+### C5 `validation/<region>.json` (written by Stage 3)
 
 Metrics, by year and overall, for calibration years (in-sample) and validation years
 (held out): Pearson r of monthly totals, bias % = (Σscaled − Σviirs) / Σviirs, and median
-absolute % error over months where VIIRS ≥ 10. Also includes the monthly series behind the
-metrics, so the Methods tab can chart them: `monthly_viirs` (S-NPP cell-days) and
-`monthly_modis`, which is **Aqua × k (scaled)**, not raw MODIS.
+absolute % error over months where VIIRS ≥ 10. "Overall" covers all of those years together.
+Also includes the monthly series behind the metrics, so the Methods tab can chart them:
+`monthly_viirs` (S-NPP cell-days) and `monthly_modis`, which is **Aqua × k (scaled)**, not
+raw MODIS. Both come from C2 (Aqua cell-days × k(tile, month), and S-NPP cell-days). Don't
+use C4: from 2012 on it holds VIIRS, so it has no MODIS to compare.
 
 ### C6 API responses (written by Stage 5)
 
@@ -461,7 +601,11 @@ Query parameters shared by all area endpoints:
 - `start=YYYY-MM-DD&end=YYYY-MM-DD`
 
 Errors return `{"error": "...", "field": "..."}` with HTTP status 400 (bad input) or 422 (no
-data for this area; the response also lists the covered areas).
+data for this area; the response also lists the covered regions).
+
+An analyzed area must lie inside one region. Every JSON response includes
+`"data_version": "..."` (C7) and is sent with `ETag: "<data_version>"`; a request with a
+matching `If-None-Match` gets a 304.
 
 `GET /api/calendar`
 
@@ -515,17 +659,31 @@ Other endpoints:
 - `GET /api/hotspots.csv?all_sensors=0` streams the hotspot CSV.
 - `GET /api/calendar.csv` returns the calendar matrix as CSV.
 - `GET /api/calendar.png` returns the calendar as an image.
-- `GET /api/coverage` returns the contents of `coverage.json`.
-- `GET /api/methods` returns a calibration summary plus `validation.json`.
-- `GET /health` returns a status check.
+- `GET /api/coverage` returns `{regions: [...coverage.json entries], starter_areas: [...from
+  regions.json], data_version}`.
+- `GET /api/methods?region=<name>` returns that region's calibration summary plus
+  `validation/<region>.json`.
+- `GET /health` returns `{status, data_version, regions: [{name, latest_date, age_days}]}`.
+  `status` is `"stale"` when a region's latest date is more than 3 days old.
+
+### C7 `data_version.json` (written at the end of every pipeline run)
+
+```json
+{"version": "2026-11-13T22:05:00Z",
+ "regions": {"southeast_asia": {"latest_date": "2026-11-12", "synthetic": false},
+             "amazon": {"latest_date": "2026-11-12", "synthetic": false}}}
+```
+
+`version` is the run's finish time in UTC. It changes only when the data does.
 
 ---
 
 ## 7. Stages
 
-Order: 0 → 1a → 1b → 2 → 3 → 4 → 5 → 6a–6i → 7. Stage 6a and the rest of 6b don't need the
-backend, so the owner may schedule them earlier. The other frontend sub-stages need the
-Stage 5 mocks.
+Order from here: **0b → 3 (finish) → S → load the two regions → 4 → 5 → 6a–6i → 7.**
+Stages 0, 1a, 1b and 2 are done; their sections stay as the spec their tests check, and
+Stage S changes how they store data. Stage 6a and the rest of 6b don't need the backend, so
+the owner may run them in parallel. The other frontend sub-stages need the Stage 5 mocks.
 
 ### Stage 0: Groundwork
 
@@ -549,6 +707,28 @@ Done when:
   dtype and a `sensor` column in C4 each fail with a clear message) and a `Settings` test
   (defaults, and an override from the environment).
 - `sample-data/modis.csv` and `sample-data/viirs.csv` are back.
+
+### Stage 0b: Foundations for growth (next)
+
+Goal: the cheap groundwork that is expensive to add later.
+
+- **CI:** `.github/workflows/ci.yml` runs on every push and pull request:
+  - Python 3.12: `pip install -r requirements-dev.txt`, then `pytest -q`
+  - Node (current LTS, from `frontend/.nvmrc`): `npm ci`, then `npm run check` in `frontend/`.
+    Add the missing `lint`, `typecheck` and `check` scripts if 6a hasn't yet.
+  - No secrets: tests never touch the network, so CI needs no FIRMS key.
+- **Regions file:** create `config/regions.json` exactly as section 5.1 shows.
+  `firecal/regions.py` loads it and checks the rules; `Settings` exposes `REGIONS` and
+  `STARTER_AREAS` from it. The CLIs accept `--region` for a region or a test region.
+- **Decision log:** add `docs/decisions.md` (the owner provides the first version) and append
+  an entry whenever a section 5 default or a contract changes.
+
+Done when:
+
+- CI runs on GitHub and passes on `pascual`. Report the link to the passing run.
+- Tests: the regions file loads; regions don't overlap; every starter area is inside its
+  region and at most `MAX_AREA_KM2`; a broken file (overlap, oversized starter area, unknown
+  region) fails with a clear message.
 
 ### Stage 1a: Fetch (FIRMS API → C0)
 
@@ -602,7 +782,9 @@ This module only downloads and caches. It never parses rows beyond checking the 
 - Size estimate to show in the report: the full `bolivia_east` backfill is about 8,600 MODIS
   days (2003 to the end of SP) plus about 5,300 VIIRS days (from 2012-01-20). That's roughly
   14,000 transactions in the worst case, or about 35 minutes at 4,000 per 10 minutes. It
-  only runs once per area, because of the cache.
+  only runs once per area, because of the cache. The cost is per day, not per area, which
+  is why the history now comes from yearly country files and the API only fills in the
+  current year (section 2.3, Stage S).
 
 Done when (all without network, using a fake transport and a fake clock):
 
@@ -691,7 +873,11 @@ Goal: one sensor-free daily series per cell.
 
 - `calibrate.py`: `fit_calibration(celldays, settings) -> DataFrame` (C3).
   - Use **only** the calibration years, Aqua vs. SNPP.
-  - `k = Σ SNPP cell-days / Σ Aqua cell-days` (ratio of sums).
+  - `k = Σ SNPP cell-days / Σ Aqua cell-days` (ratio of sums). A cell-day is a row of C2:
+    count rows, never sum `n_detections`.
+  - If the calibration years have no Aqua cell-days, raise a clear error. Never fall back to
+    k = 1.
+  - Fit per region; write `region`, `platform` (`Aqua`) and `reference` (`SNPP`) into C3.
   - Fallback order when `modis_celldays < MIN_CALIBRATION_CELLDAYS`: tile × month → tile →
     all tiles × month → all tiles. Record the level used.
 - `apply.py`: `build_harmonized(celldays, calibration, settings) -> DataFrame` (C4).
@@ -703,29 +889,92 @@ Goal: one sensor-free daily series per cell.
     coverage area but Aqua has some, treat it as a VIIRS outage. Use Aqua × k with
     `basis = modis_gapfill`.
 - `validate.py`: `validate(celldays, calibration, settings) -> dict` (C5). Compare Aqua × k
-  with SNPP in both the calibration and validation years.
+  with SNPP in both the calibration and validation years, both computed from C2 (see C5).
 - `cli.py`: `python -m firecal.harmonize`. If the calibration years aren't in the data (for
   example, with only the 7-day sample), stop with a clear message. Never silently use a
   default `k`.
-- `firecal/devdata.py`: `python -m firecal.devdata --region bolivia_east` generates a
-  **labeled synthetic** C2 dataset for 2003 to today. It has seasonality (peak Aug–Oct), a
-  known per-tile ratio between SNPP and Aqua, and noise. Stages 4–6 can then be developed
-  before the real archive is downloaded.
+- `firecal/devdata.py`: `generate(settings, seed) -> DataFrame` (callable from tests) and
+  `python -m firecal.devdata`, which writes a **labeled synthetic** C2 dataset to
+  `data/synthetic/` (never `data/processed/`) with `synthetic: true` in its coverage.
+  - Two specific 1° tiles: tile A with SNPP = 2.5 × Aqua, tile B with 1.5 ×.
+  - Each day, Aqua fire cells ~ Poisson(λ × seasonal factor, peak Aug–Oct) and SNPP cells
+    ~ Poisson(ratio × λ × seasonal factor), drawn as **distinct cells** within the tile, so
+    there are no duplicate (cell, date, platform) rows.
+  - Aqua for 2003 to today; SNPP only from 2012-01-20.
+  - λ is high enough that every tile × month in 2013–2017 has at least
+    `MIN_CALIBRATION_CELLDAYS` Aqua cell-days.
+  - A few days in 2016 with Aqua fires and no SNPP, to exercise gap fill.
+  - Fixed seed.
+
+Done when (each one is a test that asserts the number):
+
+- Synthetic: k is within ±5% of 2.5 for tile A and of 1.5 for tile B, at level `tile_month`.
+- Synthetic: validation r > 0.9 and |bias| < 5%, for both the calibration and the
+  validation years.
+- Fallback: a tile with too few Aqua cell-days gets the parent k and the right `level`.
+- Switch date: Aqua before 2012-02-01 is `modis_scaled`; SNPP after it is `viirs`.
+- Gap fill: the 2016 Aqua-only days become `modis_gapfill` with value k.
+- No calibration-year data: a clear error.
+- C4 has no `sensor` or `platform` column (enforced by the contract validator).
+- C5's `monthly_modis` equals Aqua cell-days × k for a hand-checked month.
+- The report gives the recovered k for both tiles, the validation metrics and the C4 row
+  count per `basis`. On real data (after Stage S), the same per region.
+
+### Stage S: Scale and regions (C0–C5 at continental size)
+
+Goal: load the two regions (likely tens of millions of detections) and make adding a region
+or a satellite a data change, not a rewrite. Stages 1a–3 keep their logic and tests; this
+stage changes how they store and process data.
+
+- **Country files** (`firecal/fetch/country.py`, CLI `python -m firecal.fetch country
+  --region <name>`). First report, without downloading at scale:
+  - the file URLs on <https://firms.modaps.eosdis.nasa.gov/country/>
+  - whether single-country files exist or only the yearly all-country archives, and their
+    sizes
+  - the last complete year available, and whether its `version` is SP or NRT
+  - whether the columns match the area API's (including `type`)
+  - FIRMS's exact spelling of each country in `regions.json`
+
+  The owner approves before the large download. Then download MODIS (2003 to the last
+  complete year) and VIIRS S-NPP (2012 to the last complete year) for the region's
+  countries into C0's country cache, skipping files already present.
+- **API for the current year:** `backfill --region <name>` starts from the day after the
+  country files end. For a `history: api` region, it covers everything.
+- **Key status:** take the real URL from the "view status" link in the MAP_KEY email, parse
+  the response, and pause near the limit. If that can't be done, remove the call instead of
+  warning.
+- **Progress:** downloads and backfills print a line every 50 items (done/total,
+  transactions used, elapsed time, ETA). Dry runs print the estimated time.
+- **Ingest:** vectorized (no `apply(axis=1)`, `iterrows` or per-row loops). Clip rows to the
+  region's box and tag them with the region. Write C1 partitions by region and year;
+  SP-replaces-NRT and dedup run per partition in DuckDB.
+- **Cells and harmonize:** per region and year, in DuckDB or vectorized pandas. Rebuild only
+  the partitions whose inputs changed (record input fingerprints in the meta file). Gap fill
+  is decided per region ("SNPP has zero cell-days across the region that day").
+  Calibration is fitted once per region and refitted only with `--recalibrate`.
+- **Data version:** every run ends by writing C7.
 
 Done when:
 
-- In a synthetic test where tile A has SNPP = 2.5 × Aqua and tile B has 1.5 × (with noise),
-  the fitted `k` is within ±5% for both tiles. Validation r > 0.9 and |bias| < 5%.
-- A fallback test gives the parent `k` and the correct `level`.
-- A switch-date test and a gap-fill test pass.
-- C4 has no `sensor` or `platform` column (enforced by the contract validator).
-- C5's `monthly_modis` is Aqua × k (a test checks it against the hand-computed value).
-- On real data, include `validation.json` metrics in your stage report.
+- A test with two small synthetic regions writes separate partitions per region and year,
+  with no rows crossing regions. Changing one year's input rebuilds only that year.
+- All earlier tests still pass, including the sample-data numbers from section 2.4.
+- On one real region-year (e.g. `amazon` 2019), the report gives the ingest, cells and
+  harmonize times and the peak memory. Flag it if peak memory goes above 4 GB.
+
+**Then load the two regions.** For each region: country files, API backfill, ingest,
+cells, harmonize. Report rows per platform and per year, the median k, the validation
+metrics, and the latest date in C7.
 
 ### Stage 4: Analytics (C4 + C1 → Python results)
 
-Goal: pure functions that answer every question the UI asks. Use DuckDB over the Parquet
-files. Every function takes `today` (section 5, "Which day is today").
+Goal: pure functions that answer every question the UI asks. Use DuckDB over the
+partitioned datasets, filtering on `region` and `year` first so only the needed partitions
+are read. Every function takes `today` (section 5.2). The placeholder code from commit
+`2d2b167` doesn't follow this section; rebuild it.
+
+- An area must lie inside one region. `Area.region(regions)` returns that region, or `None`
+  (the API turns `None` into a 422).
 
 - `area.py`:
   - An `Area` dataclass, with `from_bbox(w, s, e, n)` and `from_point(lat, lon, radius_km)`.
@@ -772,8 +1021,9 @@ Done when:
     `{year: 2026, month: 11, through_day: 12}`
   - the baseline warning
   - `current_month` is `null` when `today` is outside the range
-- On the synthetic `bolivia_east` dataset, `calendar_matrix` for the full record runs in
-  under 2 s.
+- On real data, `calendar_matrix` for a 500,000 km² box inside a region, over 2003 to
+  today, runs in under 1 s (warm) on the dev machine. Report the time. If it's slower, add a
+  monthly per-cell rollup built by the pipeline, and only then: measure before optimizing.
 
 ### Stage 5: API (Flask)
 
@@ -789,7 +1039,11 @@ Goal: serve Stage 4 over HTTP with the C6 shapes.
   - **Every area endpoint** (calendar, summary, map, hotspots, the CSVs and the PNG) runs the
     same coverage check: an area outside every coverage returns 422 with the coverage list; a
     partial overlap returns 200 with `coverage_warning`.
-  - `today` comes from coverage, never the server clock (section 5).
+  - `today` comes from C7, never the server clock (section 5.2).
+  - Every JSON response carries `data_version`, with `ETag` / `If-None-Match` → 304 (C6).
+  - A server-side LRU cache (`API_CACHE_ENTRIES`) keyed by path, query string and data
+    version. Starter areas and watchlist checks repeat the same queries.
+  - `/api/coverage` and `/health` follow the C6 shapes (regions, starter areas, freshness).
   - CSV downloads stream from a generator, with
     `Content-Disposition: attachment; filename=hotspots_<W>_<S>_<E>_<N>_<start>_<end>.csv`.
 - `images.py`: `/api/calendar.png` with matplotlib. Use the same color ramps as the UI
@@ -809,6 +1063,10 @@ Done when:
 
 - Flask test client tests cover every endpoint: success, 400 and 422 cases, including a 422
   from `/api/summary`.
+- A repeated request with the returned ETag gets a 304; after a new C7 version, the same
+  request gets fresh data.
+- `/health` reports `stale` when a region's latest date is more than 3 days old (test with a
+  fixed `today`).
 - `/api/calendar` is under 50 KB for the full record.
 - The only endpoint that returns detection rows as JSON is the paged `/api/hotspots`.
 - Mock files are generated, and a Python test validates each one against the C6 shape.
@@ -819,6 +1077,21 @@ Done when:
 section 6 lists the sub-stages with their tests. Its section 1.2 (the problems on the old
 branch) and section 7 (backend fixes) describe the deleted first attempt; those lessons are
 now in section 2.2 and in Stages 4 and 5 here.
+
+**Overrides of `frontend-tasks.md`** (decisions D3, D6). These win over that file:
+
+- **Default view:** when the hash is empty, open on the first starter area from
+  `/api/coverage`, with dates from its region's start to its `latest_date`. (Not "the first
+  region": a region is far bigger than `MAX_AREA_KM2`.)
+- **6b "Jump to" picker:** lists the starter areas grouped by region. Choosing one fills the
+  draft and fits the map to it.
+- **6b coverage check before Analyze:** when the draft area isn't inside one region, Analyze
+  is disabled and the helper line names the covered regions. The user shouldn't need a 422
+  to find out.
+- **6b map toolbar:** the bboxfinder-style stack below, not zoom at the bottom-right.
+- **"Data through"** shows the analyzed region's `latest_date`. `/api/coverage` follows
+  C6's new shape (6a schemas).
+- **6h Methods tab:** shows the region of the analyzed area (`/api/methods?region=`).
 
 Rules for every sub-stage:
 
@@ -881,14 +1154,16 @@ Done when (each sub-stage):
 ### Stage 7: Pipeline, Docker, docs
 
 - `firecal/pipeline.py`, the automated input workflow from start to finish:
-  - `python -m firecal.pipeline backfill --region X` runs fetch backfill → ingest → cells →
-    harmonize (with calibration).
+  - `python -m firecal.pipeline add-region <name>` loads a region from `regions.json`:
+    country files (if `history: country_files`) → API backfill for the rest → ingest → cells
+    → harmonize (with calibration) → C7.
   - `python -m firecal.pipeline update [--region X | --all]` runs fetch update → ingest →
-    cells → harmonize. It reuses the existing calibration; `--recalibrate` refits it.
+    cells → harmonize → C7. It rebuilds only the partitions whose inputs changed (normally
+    the current year), reuses the existing calibration, and refits it with `--recalibrate`.
   - Each step is the same function its stage's CLI calls; `pipeline.py` only chains them and
     stops at the first failure with a clear message.
-  - Rebuilding cells and the harmonized table in full each time is fine. Only optimize if it
-    takes more than 5 minutes.
+  - Each run writes a short summary (rows added per region, partitions rebuilt, durations)
+    to `data/processed/runs/<timestamp>.json`.
 - **Daily update:** `docker-compose.yml` already has an `updater` service that runs
   `pipeline update --all` once a day and shares the `data/` volume with the web service.
   Check that it works with the real pipeline. Writers already save atomically (section 6),
@@ -915,7 +1190,8 @@ Done when (each sub-stage):
   this area". It queues a background `pipeline backfill` job and shows progress. Limit it to
   one job at a time and show the estimated transactions before starting, because a backfill
   takes tens of minutes and uses the key's quota.
-- NOAA-20 as a continuity fallback for S-NPP, with its own calibration against S-NPP.
+- NOAA-20 and NOAA-21 as continuity for S-NPP. Each gets C3 rows with `platform = NOAA20`
+  (or `NOAA21`) and `reference = SNPP`. C4 and everything downstream stay the same.
 - Place search, preset administrative boundaries, a PDF report.
 
 ---
@@ -947,3 +1223,4 @@ Done when (each sub-stage):
 | Current month vs. historical median, anomalies | 4, 6d, 6e, 6i |
 | Downloadable hotspot CSV for a search | 4, 5, 6g |
 | Download analytics and visualizations | 5, 6e, 6g |
+| New regions and satellites without rewrites | 0b, S, 7 (`add-region`), 8 |

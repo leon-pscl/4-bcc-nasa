@@ -36,10 +36,22 @@ class Settings:
     MIN_BASELINE_YEARS: int = 5
     MAX_AREA_KM2: int = 500_000
     MAX_MAP_CELLS: int = 20_000
-    REGIONS: dict = field(default_factory=lambda: {
-        "bolivia_east": (-64, -18, -60, -14),
-        "luzon_example": (121.116028, 14.583583, 121.643372, 15.445738),
-    })
+    REGIONS: dict = field(default_factory=dict)
+    STARTER_AREAS: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        try:
+            import json, os
+            p = os.path.join("config", "regions.json")
+            if os.path.exists(p):
+                data = json.load(open(p))
+                self.REGIONS = {r["name"]: tuple(r["bbox"]) for r in data["regions"]}
+                self.STARTER_AREAS = {s["name"]: tuple(s["bbox"]) for s in data["starter_areas"]}
+        except Exception:
+            if not self.REGIONS:
+                self.REGIONS = {"bolivia_east": (-64, -18, -60, -14)}
+            if not self.STARTER_AREAS:
+                self.STARTER_AREAS = {}
     FIRMS_BASE_URL: str = "https://firms.modaps.eosdis.nasa.gov"
     FIRMS_SOURCES: dict = field(default_factory=lambda: {
         "MODIS": ("MODIS_SP", "MODIS_NRT"),

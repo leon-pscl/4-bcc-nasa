@@ -1,0 +1,27 @@
+{
+  "regions": [
+    {"name": "southeast_asia", "label": "Southeast Asia",
+     "bbox": [92.0, -11.0, 141.0, 28.5],
+     "countries": ["Myanmar", "Thailand", "Laos", "Cambodia", "Vietnam", "Malaysia",
+                   "Singapore", "Brunei", "Indonesia", "Philippines", "Timor-Leste",
+                   "China", "Taiwan", "India", "Bangladesh"],
+     "history": "country_files"},
+    {"name": "amazon", "label": "Amazon",
+     "bbox": [-80.0, -20.0, -44.0, 6.0],
+     "countries": ["Brazil", "Bolivia", "Peru", "Ecuador", "Colombia", "Venezuela",
+                   "Guyana", "Suriname", "French Guiana", "Paraguay", "Chile"],
+     "history": "country_files"}
+  ],
+  "starter_areas": [
+    {"name": "central_kalimantan", "label": "Central Kalimantan", "region": "southeast_asia",
+     "bbox": [110.7, -3.6, 115.9, 0.8]},
+    {"name": "northern_thailand", "label": "Northern Thailand", "region": "southeast_asia",
+     "bbox": [97.3, 17.0, 101.5, 20.5]},
+    {"name": "luzon_example", "label": "Luzon example", "region": "southeast_asia",
+     "bbox": [121.116028, 14.583583, 121.643372, 15.445738]},
+    {"name": "rondonia", "label": "Rondonia", "region": "amazon",
+     "bbox": [-66.0, -13.7, -60.0, -7.9]},
+    {"name": "bolivia_east", "label": "East Bolivia", "region": "amazon",
+     "bbox": [-64, -18, -60, -14]}
+  ]
+}
