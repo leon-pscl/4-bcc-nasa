@@ -34,18 +34,18 @@ export function countColor(value: number, bins: number[]): string {
 }
 
 export function binLabels(bins: number[]): string[] {
-  // bins are 7 quantile thresholds; produce 7 ranges for the 7 ramp colors
+  // bins are 7 quantile thresholds; color i covers (b[i-1], b[i]], last covers > b[5]
   const b = bins.map((x) => Math.max(1, Math.round(x)));
   const labels: string[] = [];
   let lo = 1;
   for (let i = 0; i < b.length; i++) {
-    const hi = b[i];
     if (i === b.length - 1) {
-      labels.push(lo > hi ? `over ${hi.toLocaleString('en-US')}` : `over ${(Math.max(lo - 1, hi)).toLocaleString('en-US')}`);
+      const over = b[b.length - 2] ?? b[i];
+      labels.push(`over ${over.toLocaleString('en-US')}`);
     } else {
-      const top = Math.max(lo, hi);
-      labels.push(lo === top ? `${lo.toLocaleString('en-US')}` : `${lo.toLocaleString('en-US')}–${top.toLocaleString('en-US')}`);
-      lo = top + 1;
+      const hi = Math.max(lo, b[i]);
+      labels.push(lo === hi ? `${lo.toLocaleString('en-US')}` : `${lo.toLocaleString('en-US')}–${hi.toLocaleString('en-US')}`);
+      lo = hi + 1;
     }
   }
   return labels;

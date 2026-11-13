@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textOn, COUNT_RAMP, quantileBins, countColor } from './colors';
+import { textOn, COUNT_RAMP, quantileBins, countColor, binLabels } from './colors';
 
 describe('colors', () => {
   it('textOn', () => {
@@ -17,5 +17,11 @@ describe('colors', () => {
   });
   it('countColor zero', () => {
     expect(countColor(0, [1,2])).toBe('#f0f0f0');
+  });
+  it('binLabels', () => {
+    const labels = binLabels([4, 9, 25, 80, 148, 200, 245]);
+    expect(labels[5]).toBe('149–200');
+    expect(labels[6]).toBe('over 200');
+    expect(labels).toHaveLength(7);
   });
 });
