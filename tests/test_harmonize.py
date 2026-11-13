@@ -49,6 +49,24 @@ def test_validation_r():
         assert abs(m["bias_pct"]) < 5
 
 
+def test_fallback_and_switch_and_gap():
+    settings = Settings()
+    settings.CONFIDENCE_KEEP = ("low", "nominal", "high")
+    settings.KEEP_TYPES = (0,)
+    cd = generate(settings, "bolivia_east", seed=42)
+    cal = fit_calibration(cd, settings)
+    harm = build_harmonized(cd, cal, settings)
+    # switch date: before switch modis_scaled, after viirs
+    assert "modis_scaled" in set(harm.basis)
+    assert "viirs" in set(harm.basis)
+    assert "modis_gapfill" in set(harm.basis)
+    # C5 hand check monthly_modis
+    from firecal.harmonize.validate import validate
+    v = validate(cd, cal, settings, harm)
+    m = v["calibration_years"]["metrics"]
+    assert len(m["monthly_modis"]) == 12
+
+
 def test_c4_no_sensor_platform():
     settings = Settings()
     settings.CONFIDENCE_KEEP = ("low", "nominal", "high")
