@@ -10,7 +10,7 @@ import os
 
 import duckdb
 
-from firecal.dataset import fingerprint, read_dataset, write_partition
+from firecal.dataset import fingerprint, read_dataset, write_partition, PIPELINE_VERSION
 
 
 def base_counts_sql(cd, cal_years, platform="Aqua", reference="SNPP"):
@@ -104,7 +104,9 @@ def calibration_all_sql(cal_rel, min_cal, shrink_m=0, platform="Aqua", reference
            ELSE (viirs + {shrink_m} * (viirs::DOUBLE / NULLIF(aqua, 0)))
                   / NULLIF(aqua + {shrink_m}, 0) END AS k,
       aqua AS modis_celldays, viirs AS viirs_celldays,
-      CASE WHEN aqua >= {min_cal} THEN 'all_month' ELSE 'all' END AS level
+      CASE WHEN month = 0 THEN 'all'
+           WHEN aqua >= {min_cal} THEN 'all_month'
+           ELSE 'all' END AS level
     FROM (
       SELECT region, month, aqua, viirs FROM month_tot
       UNION ALL
@@ -136,8 +138,15 @@ def harmonized_sql(cd, cal_rel, series_start, switch_date):
     k_all_month AS (
       SELECT region, platform, reference, month, k FROM {cal_rel}
       WHERE tile_id = 'ALL' AND month BETWEEN 1 AND 12
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference, month
+                                 ORDER BY CASE level WHEN 'all_month' THEN 1 ELSE 2 END) = 1
     ),
-    k_all AS (SELECT region, platform, reference, k FROM {cal_rel} WHERE tile_id = 'ALL' AND month = 0),
+    k_all AS (
+      SELECT region, platform, reference, k FROM {cal_rel}
+      WHERE tile_id = 'ALL' AND month = 0
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference
+                                 ORDER BY CASE level WHEN 'all' THEN 1 ELSE 2 END) = 1
+    ),
     aqua AS (
       SELECT cd.*, COALESCE(km.k, km_m.k, ka.k) AS k
       FROM cd
@@ -226,9 +235,15 @@ def monthly_sql(cd, cal_rel, series_start):
     k_all_month AS (
       SELECT region, platform, reference, month, k FROM {cal_rel}
       WHERE platform='Aqua' AND reference='SNPP' AND tile_id='ALL' AND month BETWEEN 1 AND 12
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference, month
+                                 ORDER BY CASE level WHEN 'all_month' THEN 1 ELSE 2 END) = 1
     ),
-    k_all AS (SELECT region, platform, reference, k FROM {cal_rel}
-              WHERE platform='Aqua' AND reference='SNPP' AND tile_id='ALL' AND month=0),
+    k_all AS (
+      SELECT region, platform, reference, k FROM {cal_rel}
+      WHERE platform='Aqua' AND reference='SNPP' AND tile_id='ALL' AND month=0
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference
+                                 ORDER BY CASE level WHEN 'all' THEN 1 ELSE 2 END) = 1
+    ),
     snpp_dates AS (SELECT DISTINCT region, date_local FROM cd WHERE platform='SNPP'),
     aqua_dates AS (SELECT DISTINCT region, date_local FROM cd WHERE platform='Aqua'),
     outage AS (SELECT region, date_local FROM aqua_dates
@@ -426,13 +441,16 @@ def rebuild(settings, region=None, state=None):
                 + " UNION ALL ".join(f"SELECT * FROM {v}" for v in views))
     # cal already carries the ALL month-0 row (from calibration_all_sql)
     con.execute("CREATE OR REPLACE TEMP VIEW cal_final AS SELECT * FROM cal")
+    from firecal.harmonize.checks import check_calibration_sql
+    check_calibration_sql(con, "cal_final")
 
     # write calibration.parquet (single file, all regions; replace this region's rows)
     cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
     os.makedirs(settings.DATA_PROCESSED, exist_ok=True)
     if region and os.path.exists(cal_path):
         cols = [r[0] for r in con.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{cal_path}')").fetchall()]
+            "DESCRIBE SELECT * FROM read_parquet(?)",
+            [cal_path.replace(os.sep, '/')]).fetchall()]
         if "platform" not in cols:
             # legacy single-sensor calibration file (Aqua -> SNPP only)
             new_sql = (f"SELECT * FROM cal_final UNION ALL "
@@ -450,7 +468,8 @@ def rebuild(settings, region=None, state=None):
     os.replace(tmp, cal_path)
 
     cal_fp = fingerprint(settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS,
-                         settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region)
+                         settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region,
+                         PIPELINE_VERSION)
     rebuilt = []
     for key, meta in sorted(state.get("celldays", {}).items()):
         r, y = key.split("/")
@@ -468,4 +487,12 @@ def rebuild(settings, region=None, state=None):
     if region:
         cal_state[region] = {"fingerprint": cal_fp}
     save_state(settings, state)
+    # fail loudly if the built harmonized dataset has duplicate (cell, date) pairs
+    from firecal.harmonize.checks import check_harmonized_sql
+    harm_path = os.path.join(settings.DATA_PROCESSED, "harmonized_daily")
+    if os.path.exists(harm_path):
+        root = f"read_parquet('{harm_path.replace(os.sep, '/')}/region={region}/*/*.parquet')" \
+            if region else f"read_parquet('{harm_path.replace(os.sep, '/')}/region=*/**/*.parquet')"
+        check_harmonized_sql(con, root)
+    con.close()
     return rebuilt

@@ -11,7 +11,9 @@ import sys
 import time
 
 from firecal.config import Settings
-from firecal.dataset import CELLDAYS, DETECTIONS, HARMONIZED, load_state, write_data_versions
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, load_state,
+                             write_data_versions, acquire_writer_lock,
+                             release_writer_lock)
 
 
 def main():
@@ -41,18 +43,22 @@ def main():
         sys.exit(1)
 
     from firecal.ingest.db import connect, expand, ingest_files
-    con = connect()
-    paths = expand(args.files)
-    if not paths:
-        print("no files")
-        sys.exit(1)
-    t0 = time.time()
-    written, rows = ingest_files(con, paths, region, bbox, settings,
-                                  dry_run=args.dry_run)
-    print(f"rows: {rows}, partitions written: {len(written)}, time {time.time() - t0:.1f}s")
-    if written:
-        print("partitions:", written[:10], "..." if len(written) > 10 else "")
-    write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+    lock = acquire_writer_lock(settings)
+    try:
+        con = connect()
+        paths = expand(args.files)
+        if not paths:
+            print("no files")
+            sys.exit(1)
+        t0 = time.time()
+        written, rows = ingest_files(con, paths, region, bbox, settings,
+                                      dry_run=args.dry_run)
+        print(f"rows: {rows}, partitions written: {len(written)}, time {time.time() - t0:.1f}s")
+        if written:
+            print("partitions:", written[:10], "..." if len(written) > 10 else "")
+        write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+    finally:
+        release_writer_lock(settings)
 
 
 if __name__ == "__main__":

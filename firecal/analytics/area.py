@@ -9,6 +9,17 @@ import math
 from dataclasses import dataclass
 
 
+def haversine_sql(lat1_expr, lon1_expr, lat2, lon2):
+    """SQL expression (km) for the great-circle distance between two points."""
+    return (
+        "6371.0 * 2 * asin(sqrt("
+        f"pow(sin(radians(({lat1_expr}) - ({lat2}))/2), 2)"
+        f" + cos(radians({lat1_expr})) * cos(radians({lat2}))"
+        f" * pow(sin(radians(({lon1_expr}) - ({lon2}))/2), 2)"
+        "))"
+    )
+
+
 @dataclass
 class Area:
     w: float = None
@@ -76,5 +87,8 @@ class Area:
         """WHERE clause filtering cell centers to the area."""
         g = grid_deg if grid_deg is not None else area.grid_deg
         if area.radius_km is not None:
-            return f"haversine_distance({area.lat}, {area.lon}, cell_lat_idx*{g}+{g}/2, cell_lon_idx*{g}+{g}/2) <= {area.radius_km}"
+            g = grid_deg if grid_deg is not None else area.grid_deg
+            return (haversine_sql(f"cell_lat_idx*{g}+{g}/2", f"cell_lon_idx*{g}+{g}/2",
+                                  area.lat, area.lon)
+                    + f" <= {area.radius_km} + 1e-6")
         return f"cell_lon_idx*{g}+{g}/2 >= {area.w} AND cell_lon_idx*{g}+{g}/2 < {area.e} AND cell_lat_idx*{g}+{g}/2 >= {area.s} AND cell_lat_idx*{g}+{g}/2 < {area.n}"

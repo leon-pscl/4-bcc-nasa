@@ -6,7 +6,7 @@ Reads the detections dataset and writes Hive-partitioned cell-day partitions
 
 import duckdb
 
-from firecal.dataset import fingerprint, partition_key, read_dataset, write_partition
+from firecal.dataset import fingerprint, partition_key, read_dataset, write_partition, PIPELINE_VERSION
 
 
 def validate_meta(meta, settings):
@@ -56,8 +56,8 @@ def build_celldays_sql(source_sql, grid_deg, tile_deg, confidence_keep, keep_typ
         region,
         CAST(FLOOR(latitude / {grid_deg}) AS INTEGER)  AS cell_lat_idx,
         CAST(FLOOR(longitude / {grid_deg}) AS INTEGER) AS cell_lon_idx,
-        CAST(FLOOR(latitude / {tile_deg}) AS VARCHAR) || '_' ||
-             CAST(FLOOR(longitude / {tile_deg}) AS VARCHAR) AS tile_id,
+        CAST(FLOOR(latitude / {tile_deg}) + 0.0 AS VARCHAR) || '_' ||
+             CAST(FLOOR(longitude / {tile_deg}) + 0.0 AS VARCHAR) AS tile_id,
         date_local,
         CAST(EXTRACT(year FROM date_local) AS INTEGER) AS year,
         platform,
@@ -92,7 +92,7 @@ def rebuild(settings, region=None, force_years=None, state=None):
             continue
         part_fp = fingerprint(det_state[key].get("fingerprint"), settings.GRID_DEG,
                               settings.TILE_DEG, tuple(settings.CONFIDENCE_KEEP),
-                              tuple(settings.KEEP_TYPES))
+                              tuple(settings.KEEP_TYPES), PIPELINE_VERSION)
         if ds_state.get(key, {}).get("fingerprint") == part_fp:
             continue
         sql = build_celldays_sql(src, settings.GRID_DEG, settings.TILE_DEG,
@@ -102,4 +102,5 @@ def rebuild(settings, region=None, force_years=None, state=None):
         ds_state[key] = {"fingerprint": part_fp}
         rebuilt.append(key)
     save_state(settings, state)
+    con.close()
     return rebuilt

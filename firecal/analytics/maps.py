@@ -39,6 +39,7 @@ def map_cells(area, start, end, settings, month=None, region=None):
         WHERE {where}
         GROUP BY 1,2
     """).fetchall()
+    con.close()
     return {"grid_deg": grid,
             "aggregated_to": aggregated_to,
             "cells": [{"lat": r[0], "lon": r[1], "value": r[2]} for r in rows]}

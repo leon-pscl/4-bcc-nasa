@@ -49,6 +49,18 @@ def main():
         assert resp.status_code == 200, (name, resp.status_code, resp.get_data(as_text=True)[:300])
         dump(name, resp)
 
+    # error responses from the real app, so the frontend can develop against them
+    def dump_error(name, url, expected_status):
+        resp = client.get(url)
+        assert resp.status_code == expected_status, (name, resp.status_code,
+                                                     resp.get_data(as_text=True)[:300])
+        with open(os.path.join(MOCK_DIR, name), "w") as f:
+            json.dump(resp.get_json(), f, separators=(",", ":"))
+        print("wrote", name)
+
+    dump_error("api_error400.json", "/api/map?bbox=110.7,-3.6,115.9,0.8&start=2012-01-01&end=2018-12-31&month=13", 400)
+    dump_error("api_error422.json", "/api/calendar?bbox=95,-45,99,-42&start=2003-01-01&end=2018-12-31", 422)
+
 
 if __name__ == "__main__":
     main()

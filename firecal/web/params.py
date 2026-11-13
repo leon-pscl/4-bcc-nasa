@@ -37,14 +37,24 @@ def load_coverage(settings):
         return []
 
 
-def latest_data_date(settings):
-    for entry in load_coverage(settings):
+def latest_data_date(settings, region=None):
+    """Latest complete local day in the coverage data.
+
+    With `region`, the latest date of that region's coverage entry;
+    otherwise the newest across all loaded regions (or the harmonized dataset).
+    """
+    cov = load_coverage(settings)
+    if region is not None:
+        for entry in cov:
+            if entry.get("name") == region and entry.get("latest_date"):
+                return entry["latest_date"]
+    for entry in cov:
         if entry.get("latest_date"):
-            return entry["latest_date"]
+            return max(e["latest_date"] for e in cov if e.get("latest_date"))
     import duckdb
     con = duckdb.connect()
     try:
-        root = read_dataset(settings, "harmonized_daily")
+        root = read_dataset(settings, "harmonized_daily", [region] if region else None)
         row = con.execute(f"SELECT MAX(date_local) FROM {root}").fetchone()
         return str(row[0]) if row and row[0] else None
     finally:
@@ -107,9 +117,6 @@ def parse_query(args, settings):
         end_d = date.fromisoformat(end)
     except ValueError:
         raise ParamError("start/end must be YYYY-MM-DD", "start")
-    latest = latest_data_date(settings)
-    if latest and end_d > date.fromisoformat(latest):
-        raise ParamError(f"end {end} is later than the latest data date {latest}", "end")
     if start_d > end_d:
         raise ParamError("start is after end", "start")
 
@@ -134,10 +141,13 @@ def parse_query(args, settings):
     else:
         raise ParamError("provide bbox=W,S,E,N or point=LAT,LON&radius_km=R", "bbox")
 
-    # coverage check
+    # coverage check (per-region: `today` and the end check use that region's latest date)
     cov = load_coverage(settings)
     regions = [(r.get("name"), r.get("bbox")) for r in cov if r.get("bbox")]
     region, warning, ok = _coverage_status(area, regions)
     if not ok:
         raise CoverageError("area is outside the covered regions", [r for r, _ in regions])
+    latest = latest_data_date(settings, region)
+    if latest and end_d > date.fromisoformat(latest):
+        raise ParamError(f"end {end} is later than the latest data date {latest}", "end")
     return area, str(start_d), str(end_d), (latest or str(end_d)), region, warning

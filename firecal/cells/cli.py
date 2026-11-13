@@ -7,7 +7,8 @@ import sys
 import time
 
 from firecal.config import Settings
-from firecal.dataset import CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
+                             acquire_writer_lock, release_writer_lock)
 
 
 def main():
@@ -19,8 +20,12 @@ def main():
 
     from firecal.cells.db import rebuild
     t0 = time.time()
-    rebuilt = rebuild(settings, region=args.region,
-                      force_years=set(args.years) if args.years else None)
+    lock = acquire_writer_lock(settings)
+    try:
+        rebuilt = rebuild(settings, region=args.region,
+                          force_years=set(args.years) if args.years else None)
+    finally:
+        release_writer_lock(settings)
     versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
     print(f"rebuilt {len(rebuilt)} celldays partitions in {time.time() - t0:.1f}s")
     print("data_version:", versions)
