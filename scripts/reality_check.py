@@ -68,7 +68,7 @@ def main():
         return
     rows = con.execute(
         "SELECT tile_id, month, k, level, modis_celldays, viirs_celldays FROM read_parquet('"
-        + cal_path + "') WHERE level='tile_month'").fetchall()
+        + cal_path + "') WHERE level='tile_month' AND platform='Aqua'").fetchall()
     per_tile = {}
     for t, m, k, lvl, a, v in rows:
         per_tile.setdefault(t, []).append((k, lvl, a, v))
@@ -87,12 +87,12 @@ def main():
     for t, k in bottom:
         a = max(x[2] for x in per_tile[t]); v = max(x[3] for x in per_tile[t])
         print(f"    {t}: k={k:.3f} aqua_cd={a} viirs_cd={v}")
-    lv = con.execute("SELECT level, COUNT(*) FROM read_parquet('" + cal_path +
-                     "') GROUP BY 1 ORDER BY 2 DESC").fetchall()
-    print("  rows per level:", lv)
+    lv = con.execute("SELECT level, platform, COUNT(*) FROM read_parquet('" + cal_path +
+                     "') GROUP BY 1,2 ORDER BY 2 DESC, 1").fetchall()
+    print("  rows per level/platform:", lv)
     rows_all = con.execute(
         "SELECT k, modis_celldays FROM read_parquet('" + cal_path +
-        "') WHERE level='tile_month'").fetchall()
+        "') WHERE level='tile_month' AND platform='Aqua'").fetchall()
     vals_all = [r[0] for r in rows_all]
     print("  per tile-month k: min", round(min(vals_all), 4),
           "max", round(max(vals_all), 4),
