@@ -372,7 +372,7 @@ One card, overflow hidden, with three parts stacked top to bottom.
       (rounded to 4 decimals) and leaves draw mode.
     - Write the drag handler yourself; don't use Leaflet.draw (as `instructions.md` 6b says).
   - **Top-right:** segmented "Map | Satellite".
-  - **Bottom-right:** zoom + and −. Restyle Leaflet's zoom control and move it there.
+  - **Top-left stack:** zoom + and - now live in the top-left toolbar (with Draw/Delete), not bottom-right.
 - **Layers, bottom to top:**
   1. **Coverage regions** from `/api/coverage`: 1 px dashed `--muted`, with the region name as
      a tooltip.

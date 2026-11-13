@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Rectangle, useMap, useMapEvents } from 'react-leaflet';
-import type { LatLng } from 'leaflet';
+import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { parseEdges, areaKm2, wrapLon, round4 } from '../../lib/geo';
 
 type Draft = { n: string; s: string; e: string; w: string };
@@ -69,6 +69,15 @@ export default function MapCard() {
   const startRef = useRef<LatLng | null>(null);
   const liveRef = useRef<LatLng | null>(null);
   const [live, setLive] = useState<{ a: LatLng; b: LatLng } | null>(null);
+  const [map, setMap] = useState<LeafletMap | null>(null);
+  const [zoom, setZoom] = useState(5);
+  useEffect(() => {
+    if (!map) return;
+    const update = () => setZoom(map.getZoom());
+    map.on('zoomend', update);
+    update();
+    return () => { map.off('zoomend', update); };
+  }, [map]);
 
   const edges = parseEdges(draft.n, draft.s, draft.e, draft.w);
   const area = edges ? areaKm2(edges.n, edges.s, edges.e, edges.w) : null;
@@ -122,7 +131,7 @@ export default function MapCard() {
   return (
     <div style={{ border: '1px solid #959596', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
       <div style={{ position: 'relative', aspectRatio: '2 / 1', minHeight: 280 }}>
-        <MapContainer center={[ -16, -62 ]} zoom={5} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+        <MapContainer center={[ -16, -62 ]} zoom={5} zoomControl={false} ref={setMap} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
           <TileLayer
             attribution='&copy; OpenStreetMap contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -136,32 +145,50 @@ export default function MapCard() {
             onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }}
           />
         </MapContainer>
-        <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 6 }}>
-          <button
-            aria-pressed={drawing}
-            aria-label="Draw area"
-            title="Draw area"
-            onClick={() => setDrawing((d) => !d)}
-            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: drawing ? '#0f0f0f' : '#fff', color: drawing ? '#fff' : '#0f0f0f', border: '1px solid #0f0f0f', borderRadius: 4, cursor: 'pointer' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3">
-              <rect x="4" y="4" width="16" height="16" rx="1" />
-            </svg>
-          </button>
-          <button
-            aria-label="Delete area"
-            title="Delete area"
-            onClick={() => { setDraft(empty); setLive(null); startRef.current = null; setDrawing(false); }}
-            disabled={!draft.n && !draft.s && !draft.e && !draft.w}
-            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#0f0f0f', border: '1px solid #959596', borderRadius: 4, cursor: 'pointer', opacity: (!draft.n && !draft.s && !draft.e && !draft.w) ? 0.4 : 1 }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
+        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #0f0f0f', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+            <button
+              aria-label="Zoom in"
+              title="Zoom in"
+              disabled={map ? zoom >= map.getMaxZoom() : false}
+              onClick={() => map?.zoomIn()}
+              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#0f0f0f', border: 'none', borderBottom: '1px solid #0f0f0f', borderRadius: 0, cursor: 'pointer', opacity: (map && zoom >= map.getMaxZoom()) ? 0.4 : 1 }}
+            >+</button>
+            <button
+              aria-label="Zoom out"
+              title="Zoom out"
+              disabled={map ? zoom <= map.getMinZoom() : false}
+              onClick={() => map?.zoomOut()}
+              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#0f0f0f', border: 'none', borderRadius: 0, cursor: 'pointer', opacity: (map && zoom <= map.getMinZoom()) ? 0.4 : 1 }}
+            >−</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #0f0f0f', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+            <button
+              aria-pressed={drawing}
+              aria-label="Draw area"
+              title="Draw area"
+              onClick={() => setDrawing((d) => !d)}
+              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: drawing ? '#0f0f0f' : '#fff', color: drawing ? '#fff' : '#0f0f0f', border: 'none', borderBottom: '1px solid #0f0f0f', borderRadius: 0, cursor: 'pointer' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3">
+                <rect x="4" y="4" width="16" height="16" rx="1" />
+              </svg>
+            </button>
+            <button
+              aria-label="Delete area"
+              title="Delete area"
+              onClick={() => { setDraft(empty); setLive(null); startRef.current = null; setDrawing(false); }}
+              disabled={!draft.n && !draft.s && !draft.e && !draft.w}
+              style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#0f0f0f', border: 'none', borderRadius: 0, cursor: 'pointer', opacity: (!draft.n && !draft.s && !draft.e && !draft.w) ? 0.4 : 1 }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
         </div>
         {drawing && (
-          <div style={{ position: 'absolute', top: 8, left: 104, height: 44, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#fff', border: '1px solid #0f0f0f', borderRadius: 4, fontSize: 12, fontFamily: 'ui-monospace, monospace' }}>
+          <div style={{ position: 'absolute', top: 108, left: 64, height: 44, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#fff', border: '1px solid #0f0f0f', borderRadius: 4, fontSize: 12, fontFamily: 'ui-monospace, monospace', zIndex: 1000 }}>
             Drag on the map · Esc to cancel
           </div>
         )}
@@ -190,11 +217,8 @@ export default function MapCard() {
         </div>
         {!edges && (draft.n || draft.s || draft.e || draft.w) && (
           <div style={{ marginTop: 8, color: '#b2182b', fontSize: 13 }}>
-            Check the edges: north/south within ±90, east/west within ±180, south below north, west left of east, area ≤ 500,000 km².
+            Check the edges: north/south within ±90, east/west within ±180, south below north, west left of east.
           </div>
-        )}
-        {edges && area !== null && area > 500000 && (
-          <div style={{ marginTop: 8, color: '#b2182b', fontSize: 13 }}>Larger than the 500,000 km² limit. Draw a smaller area.</div>
         )}
       </div>
     </div>
