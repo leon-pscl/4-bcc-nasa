@@ -1,0 +1,29 @@
+.card { margin-top: 24px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 22px 24px 24px; }
+.header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.title { font-family: var(--font-mono); font-size: 22px; font-weight: 600; margin: 0; }
+.subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.viewToggle { display: flex; border: 1px solid var(--ink); border-radius: var(--r-control); overflow: hidden; height: 44px; }
+.viewBtn { background: var(--surface); color: var(--ink); border: none; border-right: 1px solid var(--ink); padding: 0 12px; cursor: pointer; font-family: var(--font-sans); font-size: 14px; }
+.viewBtn:last-child { border-right: none; }
+.viewBtn[aria-pressed='true'] { background: var(--ink); color: #fff; }
+.legend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; font-size: 12px; }
+.swatch { width: 26px; height: 16px; border: 1px solid rgba(0,0,0,.12); display: inline-block; vertical-align: middle; margin-right: 4px; }
+.warning { margin-top: 12px; border: 1px solid var(--ink); border-radius: 4px; padding: 8px 12px; font-size: 13px; }
+.tableWrap { margin-top: 16px; overflow-x: auto; }
+.table { border-collapse: separate; border-spacing: 3px; min-width: 960px; width: 100%; }
+.table th { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); text-align: center; }
+.yearHead { text-align: left; width: 92px; position: sticky; left: 0; background: var(--surface); }
+.yearCell { font-size: 13px; font-weight: 600; position: sticky; left: 0; background: var(--surface); }
+.partialTag { display: inline-block; margin-left: 6px; background: var(--fill); font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 4px; }
+.cellBtn { width: 100%; height: 30px; border: none; border-radius: 3px; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; position: relative; }
+.cellEmpty { height: 30px; text-align: center; color: var(--muted); }
+.partialCell::after { content: ''; position: absolute; inset: 0; border: 2px dashed var(--ink); border-radius: 3px; pointer-events: none; }
+.focused { box-shadow: 0 0 0 3px var(--ink); }
+.soFar { font-family: var(--font-mono); font-size: 10px; font-weight: 600; margin-left: 2px; }
+.totalCell { width: 170px; }
+.totalTrack { position: relative; height: 22px; background: var(--fill); }
+.totalBar { position: absolute; left: 0; top: 0; bottom: 0; background: #c8c8c9; }
+.totalBarPartial { background: repeating-linear-gradient(45deg, #c8c8c9, #c8c8c9 4px, var(--fill) 4px, var(--fill) 8px); }
+.totalText { position: relative; padding: 2px 6px; font-size: 12px; font-weight: 700; color: var(--ink); }
+.medianRow th, .medianRow td { border-top: 2px solid var(--ink); background: var(--fill); font-weight: 700; }
+.footnote { margin-top: 12px; font-size: 12px; color: var(--muted); }

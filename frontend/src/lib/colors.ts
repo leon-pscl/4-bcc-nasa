@@ -32,3 +32,19 @@ export function countColor(value: number, bins: number[]): string {
   if (i < 0) i = bins.length - 1;
   return COUNT_RAMP[i] ?? COUNT_RAMP[COUNT_RAMP.length - 1];
 }
+
+export const ANOMALY_BINS = [
+  { max: -75, color: '#2166ac', label: 'below −75%' },
+  { max: -40, color: '#67a9cf', label: '−75 to −40%' },
+  { max: -10, color: '#d1e5f0', label: '−40 to −10%' },
+  { max: 10, color: '#f7f7f7', label: 'within ±10%' },
+  { max: 40, color: '#fddbc7', label: '+10 to +40%' },
+  { max: 75, color: '#ef8a62', label: '+40 to +75%' },
+  { max: Infinity, color: '#b2182b', label: 'above +75%' },
+];
+
+export function anomalyColor(pct: number | null): string {
+  if (pct === null) return '#f0f0f0';
+  for (const b of ANOMALY_BINS) if (pct <= b.max) return b.color;
+  return '#b2182b';
+}

@@ -1,6 +1,7 @@
 import AppHeader from './components/AppHeader/AppHeader';
 import SyntheticBanner from './components/SyntheticBanner/SyntheticBanner';
 import MapCard from './components/MapCard/MapCard';
+import BurningCalendar from './components/BurningCalendar/BurningCalendar';
 import { useAppState } from './state/useAppState';
 import './index.css';
 
@@ -16,7 +17,7 @@ export default function App() {
         <div style={{ flex: '999 1 640px' }}><MapCard /></div>
         <div style={{ flex: '1 1 360px', maxWidth: 420, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--surface)', padding: 20 }}>Side panel</div>
       </div>
-      <section style={{ marginTop: 24, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--surface)', padding: 22 }}>Burning calendar</section>
+      <BurningCalendar />
     </main>
   );
 }
