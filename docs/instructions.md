@@ -655,7 +655,17 @@ For a point query, `query` has `point` and `radius_km` in place of `bbox`.
 Other endpoints:
 
 - `GET /api/hotspots?page=1&page_size=100` returns paged detection rows as JSON
-  (`page_size` ≤ 500).
+  (`page_size` ≤ 500). Shape (the frontend reads this):
+  ```json
+  {"page": 1, "page_size": 100, "total": 1234,
+   "rows": [{"date_local": "2026-09-27", "acq_datetime_utc": "2026-09-27T00:18:00",
+             "latitude": -16.025, "longitude": -61.975,
+             "confidence_class": "nominal", "frp": 12.3, "daynight": "D",
+             "sensor": "MODIS", "platform": "Aqua", "processing": "NRT"}],
+   "data_version": "a1b2c3d4e5f6g7h"}
+  ```
+  `sensor`, `platform`, `processing` are present when requested via `all_sensors=1`;
+  by default (the harmonized series) they may be omitted.
 - `GET /api/hotspots.csv?all_sensors=0` streams the hotspot CSV.
 - `GET /api/calendar.csv` returns the calendar matrix as CSV.
 - `GET /api/calendar.png` returns the calendar as an image.

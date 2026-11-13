@@ -1,100 +1,58 @@
-"""CLI for firecal.ingest."""
+"""CLI for firecal.ingest: FIRMS CSV -> detections dataset (C1).
+
+Reads files in chunks with DuckDB and writes Hive-partitioned Parquet
+(region, year). Only partitions whose inputs changed are rebuilt.
+"""
 
 import argparse
-import glob
 import json
 import os
 import sys
-
-import pandas as pd
+import time
 
 from firecal.config import Settings
-from firecal.ingest.firms_csv import read_firms_csv
-from firecal.ingest.store import merge_into_store
+from firecal.dataset import CELLDAYS, DETECTIONS, HARMONIZED, load_state, write_data_versions
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--region")
-    parser.add_argument("--bbox")
-    parser.add_argument("--name")
-    parser.add_argument("files", nargs="*")
+    parser.add_argument("--region", default=None)
+    parser.add_argument("--bbox", default=None)
+    parser.add_argument("--name", default=None)
+    parser.add_argument("--files", nargs="*", default=[])
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-
     settings = Settings.from_env()
-    store_path = os.path.join(settings.DATA_PROCESSED, "detections.parquet")
-    os.makedirs(settings.DATA_PROCESSED, exist_ok=True)
 
-    if args.files:
-        paths = []
-        for pat in args.files:
-            paths.extend(glob.glob(pat))
-        frames = [read_firms_csv(p) for p in paths]
-        if not frames:
-            print("no files")
-            sys.exit(1)
-        new_df = pd.concat(frames, ignore_index=True)
-        old_count = 0
-        if os.path.exists(store_path):
-            old_count = len(pd.read_parquet(store_path))
-        merged = merge_into_store(new_df, store_path)
-        added = len(merged) - old_count
-        dropped = len(new_df) - added
-        print(f"rows read: {len(new_df)}, rows added: {added}, duplicates dropped: {dropped}")
-        return
-
-    # ingest from manifest
-    manifest_path = os.path.join(settings.DATA_RAW, "firms", "manifest.jsonl")
-    if not os.path.exists(manifest_path):
-        print("no manifest")
-        sys.exit(1)
-    entries = [json.loads(l) for l in open(manifest_path) if l.strip()]
     if args.region:
-        bbox = settings.REGIONS[args.region]
+        bbox = settings.REGIONS.get(args.region)
+        if bbox is None:
+            print("unknown region", args.region)
+            sys.exit(1)
+        region = args.region
     elif args.bbox:
         if not args.name:
             print("--name required with --bbox")
             sys.exit(1)
         bbox = tuple(float(x) for x in args.bbox.split(","))
+        region = args.name
     else:
-        print("need --region or --bbox or files")
+        print("need --region or --bbox")
         sys.exit(1)
-    matching = [e for e in entries if tuple(e["bbox"]) == tuple(bbox)]
-    frames = []
-    for e in matching:
-        frames.append(read_firms_csv(e["path"]))
-    if not frames:
-        print("no matching manifest entries")
+
+    from firecal.ingest.db import connect, expand, ingest_files
+    con = connect()
+    paths = expand(args.files)
+    if not paths:
+        print("no files")
         sys.exit(1)
-    new_df = pd.concat(frames, ignore_index=True)
-    old_count = 0
-    if os.path.exists(store_path):
-        old_count = len(pd.read_parquet(store_path))
-    dates = [e["date"] for e in matching]
-    # expand to actual chunk dates? use manifest date only (start of chunk); approximate
-    all_dates = []
-    for e in matching:
-        from datetime import date, timedelta
-        d = date.fromisoformat(e["date"])
-        for i in range(e["day_range"]):
-            all_dates.append(d + timedelta(days=i))
-    start = min(all_dates).isoformat() if all_dates else None
-    end = max(all_dates).isoformat() if all_dates else None
-    platforms = sorted(set(new_df["platform"].astype(str))) if len(new_df) else []
-    coverage_path = os.path.join(settings.DATA_PROCESSED, "coverage.json")
-    entry = {
-        "name": args.region or args.name or "custom",
-        "bbox": list(bbox),
-        "start": start,
-        "end": end,
-        "platforms": platforms,
-        "latest_date": end,
-        "synthetic": False,
-    }
-    merged = merge_into_store(new_df, store_path, coverage_path=coverage_path, coverage_entry=entry)
-    added = len(merged) - old_count
-    dropped = len(new_df) - added
-    print(f"rows read: {len(new_df)}, rows added: {added}, duplicates dropped: {dropped}")
+    t0 = time.time()
+    written, rows = ingest_files(con, paths, region, bbox, settings,
+                                  dry_run=args.dry_run)
+    print(f"rows: {rows}, partitions written: {len(written)}, time {time.time() - t0:.1f}s")
+    if written:
+        print("partitions:", written[:10], "..." if len(written) > 10 else "")
+    write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
 
 
 if __name__ == "__main__":

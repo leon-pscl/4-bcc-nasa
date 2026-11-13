@@ -98,7 +98,7 @@ def test_c5_hand_check():
     settings.KEEP_TYPES = (0,)
     cd = generate(settings, "bolivia_east", seed=42)
     cal = fit_calibration(cd, settings)
-    from firecal.harmonize.validate import validate, _lookup_k_series
+    from firecal.harmonize.validate import validate
     v = validate(cd, cal, settings)
     # hand compute for one month
     aqua = cd[cd.platform == "Aqua"].copy()

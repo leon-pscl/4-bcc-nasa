@@ -1,104 +1,51 @@
-"""Calibration factors MODIS -> VIIRS."""
+"""Calibration factors MODIS -> VIIRS (C3), computed in DuckDB.
 
+The pandas-free path: the cell-day frame is registered as a DuckDB view and the
+factor table comes from `firecal.harmonize.db.calibration_sql`, the same SQL the
+pipeline runs over the full dataset.
+"""
+
+import duckdb
 import pandas as pd
 
 from firecal.contracts import validate_calibration
+from firecal.harmonize.db import calibration_all_sql, calibration_sql
+
+
+def _con_with(df, name):
+    con = duckdb.connect()
+    con.register(name, df)
+    return con
 
 
 def fit_calibration(celldays, settings):
-    cal_years = range(settings.CALIBRATION_YEARS[0], settings.CALIBRATION_YEARS[1] + 1)
-    df = celldays.copy()
-    df["year"] = pd.to_datetime(df["date_local"]).dt.year
-    df = df[df["year"].isin(cal_years)]
-    if df.empty:
+    """k = SNPP cell-days / Aqua cell-days per tile x month, with fallbacks."""
+    cd = celldays.copy()
+    if "region" not in cd.columns:
+        cd["region"] = "test"
+    if "year" not in cd.columns:
+        cd["year"] = pd.to_datetime(cd["date_local"]).dt.year
+    cal_years = settings.CALIBRATION_YEARS
+    if not len(cd):
         raise ValueError("no calibration years present in data")
-    aqua = df[df["platform"] == "Aqua"]
-    snpp = df[df["platform"] == "SNPP"]
-    if aqua.empty:
-        raise ValueError("no Aqua cell-days in calibration years")
-
-    # cell-day counts
-    a_counts = aqua.groupby(["tile_id", pd.to_datetime(aqua["date_local"]).dt.month]).size().rename("aqua_cd")
-    s_counts = snpp.groupby(["tile_id", pd.to_datetime(snpp["date_local"]).dt.month]).size().rename("snpp_cd")
-    merged = pd.concat([a_counts, s_counts], axis=1).fillna(0).reset_index()
-    merged = merged.rename(columns={"date_local": "month"})
-
-    tile_totals = merged.groupby("tile_id").agg(aqua=("aqua_cd", "sum"), snpp=("snpp_cd", "sum"))
-    month_totals = merged.groupby("month").agg(aqua=("aqua_cd", "sum"), snpp=("snpp_cd", "sum"))
-    grand_a = int(merged["aqua_cd"].sum())
-    grand_s = int(merged["snpp_cd"].sum())
-
-    def k_ratio(a, s):
-        if a == 0:
-            raise ValueError("cannot calibrate: zero Aqua cell-days")
-        return s / a
-
-    rows = []
-    tiles = sorted(df["tile_id"].unique())
-    for tile in tiles:
-        tt = tile_totals.loc[tile] if tile in tile_totals.index else {"aqua": 0, "snpp": 0}
-        for m in range(1, 13):
-            sub = merged[(merged["tile_id"] == tile) & (merged["month"] == m)]
-            a_cd = int(sub["aqua_cd"].sum()) if len(sub) else 0
-            s_cd = int(sub["snpp_cd"].sum()) if len(sub) else 0
-            if a_cd >= settings.MIN_CALIBRATION_CELLDAYS:
-                k = k_ratio(a_cd, s_cd)
-                level = "tile_month"
-                used_a, used_s = a_cd, s_cd
-            elif int(tt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
-                k = k_ratio(int(tt["aqua"]), int(tt["snpp"]))
-                level = "tile"
-                used_a, used_s = int(tt["aqua"]), int(tt["snpp"])
-            else:
-                mt = month_totals.loc[m] if m in month_totals.index else {"aqua": 0, "snpp": 0}
-                if int(mt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
-                    k = k_ratio(int(mt["aqua"]), int(mt["snpp"]))
-                    level = "all_month"
-                    used_a, used_s = int(mt["aqua"]), int(mt["snpp"])
-                else:
-                    k = k_ratio(grand_a, grand_s)
-                    level = "all"
-                    used_a, used_s = grand_a, grand_s
-            rows.append({
-                "tile_id": tile,
-                "month": m,
-                "k": float(k),
-                "modis_celldays": int(used_a),
-                "viirs_celldays": int(used_s),
-                "level": level,
-            })
-
-    # ALL rows
-    for m in range(1, 13):
-        mt = month_totals.loc[m] if m in month_totals.index else {"aqua": 0, "snpp": 0}
-        if int(mt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
-            k = k_ratio(int(mt["aqua"]), int(mt["snpp"]))
-            level = "all_month"
-            ua, us = int(mt["aqua"]), int(mt["snpp"])
-        else:
-            k = k_ratio(grand_a, grand_s)
-            level = "all"
-            ua, us = grand_a, grand_s
-        rows.append({
-            "tile_id": "ALL",
-            "month": m,
-            "k": float(k),
-            "modis_celldays": int(ua),
-            "viirs_celldays": int(us),
-            "level": level,
-        })
-    # ALL month 0
-    rows.append({
-        "tile_id": "ALL",
-        "month": 0,
-        "k": float(k_ratio(grand_a, grand_s)),
-        "modis_celldays": int(grand_a),
-        "viirs_celldays": int(grand_s),
-        "level": "all",
-    })
-
-    out = pd.DataFrame(rows)
+    con = _con_with(cd, "cd")
+    try:
+        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_raw AS "
+                    f"{calibration_sql('cd', cal_years, settings.MIN_CALIBRATION_CELLDAYS)}")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_all AS "
+                    f"{calibration_all_sql('cal_raw', settings.MIN_CALIBRATION_CELLDAYS)}")
+        out = con.execute("""
+            SELECT region, tile_id, CAST(month AS SMALLINT) AS month, k,
+                   CAST(modis_celldays AS BIGINT) AS modis_celldays,
+                   CAST(viirs_celldays AS BIGINT) AS viirs_celldays, level
+            FROM (SELECT * FROM cal_raw UNION ALL SELECT * FROM cal_all)
+        """).df()
+    finally:
+        con.close()
+    if not len(out):
+        raise ValueError("no calibration years present in data")
     out["tile_id"] = out["tile_id"].astype("string")
+    out["region"] = out["region"].astype("string")
     out["month"] = out["month"].astype("int8")
     out["k"] = out["k"].astype("float64")
     out["modis_celldays"] = out["modis_celldays"].astype("int64")

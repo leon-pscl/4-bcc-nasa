@@ -1,139 +1,103 @@
-"""Parse a FIRMS CSV into the C1 detections shape."""
+"""Parse a FIRMS CSV into the C1 detections shape, with DuckDB.
 
-import hashlib
-from datetime import datetime, timedelta
+The file is read by the engine (no Python row loop); the transform is the same
+SQL the pipeline uses over big files.
+"""
 
+import duckdb
 import pandas as pd
 
 from firecal.contracts import validate_detections
 
 
-MODIS_SAT_MAP = {"Terra": "Terra", "T": "Terra", "Aqua": "Aqua", "A": "Aqua"}
-VIIRS_SAT_MAP = {"N": "SNPP", "N20": "NOAA20", "1": "NOAA20", "NOAA20": "NOAA20",
-                 "N21": "NOAA21", "2": "NOAA21", "NOAA21": "NOAA21"}
-
-
-def _confidence_class(sensor, raw):
-    raw = str(raw).strip()
-    if sensor == "MODIS":
-        try:
-            v = int(float(raw))
-        except ValueError:
-            return "nominal"
-        if v <= 29:
-            return "low"
-        if v <= 79:
-            return "nominal"
-        return "high"
-    low = raw.lower()
-    if low == "l":
-        return "low"
-    if low == "h":
-        return "high"
-    return "nominal"
-
-
-def _transform_chunk(df, sensor, source_file):
-    if sensor == "MODIS":
-        sat_map = MODIS_SAT_MAP
-    else:
-        sat_map = VIIRS_SAT_MAP
-
-    unknown = set(df["satellite"].astype(str).str.strip()) - set(sat_map.keys())
-    if unknown:
-        raise ValueError(f"unknown satellite values: {sorted(unknown)}")
-
-    platforms = df["satellite"].astype(str).str.strip().map(sat_map)
-    processing = df["version"].astype(str).str.strip().apply(
-        lambda v: "NRT" if str(v).endswith("NRT") else "SP"
-    )
-
-    def parse_dt(row):
-        d = str(row["acq_date"]).strip()
-        t = str(row["acq_time"]).strip()
-        if t == "":
-            t = "0"
-        t = t.zfill(4)
-        hh = int(t[:2])
-        mm = int(t[2:4])
-        dt = datetime.strptime(d, "%Y-%m-%d")
-        return dt.replace(hour=hh, minute=mm)
-
-    acq_utc = df.apply(parse_dt, axis=1)
-
-    def local_date(row, utc):
-        lon = float(row["longitude"])
-        local = utc + timedelta(hours=lon / 15.0)
-        return local.date()
-
-    date_local = [local_date(df.iloc[i], acq_utc.iloc[i]) for i in range(len(df))]
-
-    confidence_raw = df["confidence"].astype(str).str.strip()
-    confidence_class = [_confidence_class(sensor, v) for v in confidence_raw]
-
-    if "type" in df.columns:
-        type_series = pd.to_numeric(df["type"], errors="coerce").astype("Int8")
-    else:
-        type_series = pd.Series([pd.NA] * len(df), dtype="Int8")
-
-    out = pd.DataFrame({
-        "uid": None,
-        "sensor": sensor,
-        "platform": platforms.astype(str),
-        "processing": processing.astype(str),
-        "latitude": pd.to_numeric(df["latitude"], errors="coerce").astype("float64"),
-        "longitude": pd.to_numeric(df["longitude"], errors="coerce").astype("float64"),
-        "acq_datetime_utc": pd.to_datetime(acq_utc),
-        "date_local": date_local,
-        "daynight": df["daynight"].astype(str).str.strip().str.upper(),
-        "confidence_raw": confidence_raw.astype(str),
-        "confidence_class": confidence_class,
-        "frp": pd.to_numeric(df["frp"], errors="coerce").astype("float64"),
-        "scan": pd.to_numeric(df["scan"], errors="coerce").astype("float64"),
-        "track": pd.to_numeric(df["track"], errors="coerce").astype("float64"),
-        "brightness": pd.to_numeric(df["brightness"], errors="coerce").astype("float64"),
-        "bright_t31": pd.to_numeric(df["bright_t31"], errors="coerce").astype("float64"),
-        "type": type_series,
-        "version": df["version"].astype(str).str.strip(),
-        "source_file": source_file,
-    })
-
-    def make_uid(row):
-        base = f"{row['platform']}|{row['latitude']}|{row['longitude']}|{row['acq_datetime_utc']}"
-        return hashlib.sha256(base.encode()).hexdigest()
-
-    out["uid"] = out.apply(make_uid, axis=1)
-
-    out["sensor"] = out["sensor"].astype("string")
-    out["platform"] = out["platform"].astype("string")
-    out["processing"] = out["processing"].astype("string")
-    out["daynight"] = out["daynight"].astype("string")
-    out["confidence_raw"] = out["confidence_raw"].astype("string")
-    out["confidence_class"] = out["confidence_class"].astype("string")
-    out["version"] = out["version"].astype("string")
-    out["source_file"] = out["source_file"].astype("string")
-    out["type"] = out["type"].astype("Int8")
-    return out
-
-
 def read_firms_csv(path):
-    df = pd.read_csv(path, dtype=str, keep_default_na=False)
-    if len(df) == 0:
-        # header-only
-        sensor = "VIIRS" if "bright_ti4" in df.columns else "MODIS"
-        empty = pd.DataFrame(columns=[
-            "uid", "sensor", "platform", "processing", "latitude", "longitude",
-            "acq_datetime_utc", "date_local", "daynight", "confidence_raw",
-            "confidence_class", "frp", "scan", "track", "brightness", "bright_t31",
-            "type", "version", "source_file",
-        ])
-        # minimal dtypes
-        return empty
-    if "bright_ti4" in df.columns:
-        sensor = "VIIRS"
-        df = df.rename(columns={"bright_ti4": "brightness", "bright_ti5": "bright_t31"})
-    else:
-        sensor = "MODIS"
-    out = _transform_chunk(df, sensor, str(path))
+    con = duckdb.connect()
+    try:
+        cols = {r[0] for r in con.execute(
+            "DESCRIBE SELECT * FROM read_csv('" + str(path) + "', header=true, "
+            "auto_detect=true, sample_size=20000, nullstr='')").fetchall()}
+        if "bright_ti4" in cols:
+            sensor = "VIIRS"
+            brightness_expr, bright_t31_expr = "bright_ti4", "bright_ti5"
+        else:
+            sensor = "MODIS"
+            brightness_expr, bright_t31_expr = "brightness", "bright_t31"
+        type_expr = "CAST(type AS SMALLINT)" if "type" in cols else "CAST(NULL AS SMALLINT)"
+        sql = f"""
+        WITH raw AS (
+            SELECT * FROM read_csv('{str(path)}', header=true, auto_detect=true,
+                                   sample_size=20000, nullstr='')
+        ),
+        typed AS (
+            SELECT CAST(latitude AS DOUBLE) AS latitude,
+                   CAST(longitude AS DOUBLE) AS longitude,
+                   CAST(acq_date AS DATE) AS acq_date,
+                   CAST(acq_time AS INTEGER) AS acq_time,
+                   satellite, CAST(confidence AS VARCHAR) AS confidence,
+                   CAST(version AS VARCHAR) AS version, daynight,
+                   CAST(frp AS DOUBLE) AS frp, CAST(scan AS DOUBLE) AS scan,
+                   CAST(track AS DOUBLE) AS track,
+                   CAST({brightness_expr} AS DOUBLE) AS brightness_v,
+                   CAST({bright_t31_expr} AS DOUBLE) AS bright_t31_v,
+                   {type_expr} AS type_code,
+                   CAST('{sensor}' AS VARCHAR) AS sensor
+            FROM raw
+        ),
+        timed AS (
+            SELECT *, (acq_date + (CAST(acq_time/100 AS INTEGER) * INTERVAL '1 hour')
+                        + (CAST(acq_time%100 AS INTEGER) * INTERVAL '1 minute')) AS acq_datetime_utc
+            FROM typed
+        ),
+        mapped AS (
+            SELECT *,
+              CASE WHEN sensor='MODIS' THEN
+                     CASE WHEN CAST(confidence AS INTEGER) <= 29 THEN 1
+                          WHEN CAST(confidence AS INTEGER) <= 79 THEN 2 ELSE 3 END
+                   ELSE CASE LOWER(TRIM(confidence)) WHEN 'l' THEN 1 WHEN 'h' THEN 3 ELSE 2 END END AS conf_code,
+              CASE WHEN satellite IN ('Terra','T') THEN 'Terra'
+                   WHEN satellite IN ('Aqua','A') THEN 'Aqua'
+                   WHEN satellite IN ('N','SNPP') THEN 'SNPP'
+                   WHEN satellite IN ('N20','1','NOAA20') THEN 'NOAA20'
+                   WHEN satellite IN ('N21','2','NOAA21') THEN 'NOAA21'
+                   ELSE NULL END AS platform
+            FROM timed
+        )
+        SELECT
+            md5(platform || '|' || CAST(latitude AS VARCHAR) || '|' ||
+                CAST(longitude AS VARCHAR) || '|' || CAST(acq_datetime_utc AS VARCHAR)) AS uid,
+            CAST(sensor AS VARCHAR) AS sensor,
+            CAST(platform AS VARCHAR) AS platform,
+            CASE WHEN RIGHT(TRIM(version),3)='NRT' THEN 'NRT' ELSE 'SP' END AS processing,
+            latitude, longitude, acq_datetime_utc,
+            CAST(acq_datetime_utc + (longitude/15.0) * INTERVAL '1 hour' AS DATE) AS date_local,
+            CAST(UPPER(TRIM(daynight)) AS VARCHAR) AS daynight,
+            CAST(TRIM(confidence) AS VARCHAR) AS confidence_raw,
+            CASE conf_code WHEN 1 THEN 'low' WHEN 3 THEN 'high' ELSE 'nominal' END AS confidence_class,
+            frp, scan, track, brightness_v AS brightness, bright_t31_v AS bright_t31,
+            CAST(type_code AS SMALLINT) AS type,
+            CAST(TRIM(version) AS VARCHAR) AS version,
+            CAST('{str(path)}' AS VARCHAR) AS source_file
+        FROM mapped
+        """
+        # unknown satellites must fail loudly, never be guessed
+        known = ({"Terra", "T", "Aqua", "A"} if sensor == "MODIS"
+                 else {"N", "SNPP", "N20", "1", "NOAA20", "N21", "2", "NOAA21"})
+        sats = con.execute(
+            "SELECT DISTINCT satellite FROM read_csv('" + str(path) + "', header=true, "
+            "auto_detect=true, sample_size=20000, nullstr='')").fetchall()
+        unknown = sorted({r[0] for r in sats} - known)
+        if unknown:
+            raise ValueError(f"unknown satellite values: {unknown}")
+        out = con.execute(sql).df()
+    finally:
+        con.close()
+    for col in ("sensor", "platform", "processing", "daynight", "confidence_raw",
+                "confidence_class", "version", "source_file", "uid"):
+        out[col] = out[col].astype("string")
+    out["type"] = out["type"].astype("Int8")
+    out["acq_datetime_utc"] = pd.to_datetime(out["acq_datetime_utc"])
+    out["date_local"] = pd.to_datetime(out["date_local"]).dt.date
+    for col in ("latitude", "longitude", "frp", "scan", "track", "brightness", "bright_t31"):
+        out[col] = out[col].astype("float64")
     validate_detections(out)
     return out
