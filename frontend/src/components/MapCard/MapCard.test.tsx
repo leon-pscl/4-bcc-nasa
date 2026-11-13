@@ -1,11 +1,14 @@
 import '@testing-library/jest-dom/vitest';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MapCard from './MapCard';
 
+const dispatch = vi.fn();
+const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const };
+
 vi.mock('../../state/useAppState', () => ({
-  useAppState: () => ({ state: { area: { kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }, start: '2003-01-01', end: '2026-11-12', view: 'count', tab: 'comparisons' }, dispatch: vi.fn() }),
+  useAppState: () => ({ state, dispatch }),
 }));
 vi.mock('../../api/hooks', () => ({
   useCoverage: () => ({ data: { regions: [
@@ -16,6 +19,7 @@ vi.mock('../../api/hooks', () => ({
 }));
 
 describe('MapCard', () => {
+  beforeEach(() => dispatch.mockClear());
   afterEach(() => cleanup());
 
   it('draft starts from applied area and typing redraws the box', async () => {
@@ -52,7 +56,6 @@ describe('MapCard', () => {
     expect(screen.getByRole('button', { name: /Analyze/ })).toBeDisabled();
     expect(screen.getByText(/North and South/)).toBeInTheDocument();
 
-    // antimeridian rejected
     await user.clear(screen.getByLabelText('North edge'));
     await user.type(screen.getByLabelText('North edge'), '10');
     await user.clear(screen.getByLabelText('South edge'));
@@ -78,5 +81,49 @@ describe('MapCard', () => {
     await user.type(screen.getByLabelText('West edge'), '-170');
     expect(screen.getByText(/500,000 km² limit/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analyze/ })).toBeDisabled();
+  });
+
+  it('date presets produce the right range for a fixed latest_date', async () => {
+    render(<MapCard />);
+    const user = userEvent.setup();
+    const start = screen.getByLabelText('Start') as HTMLInputElement;
+    const end = screen.getByLabelText('End') as HTMLInputElement;
+    expect(end.value).toBe('2026-11-12');
+
+    await user.click(screen.getByRole('button', { name: 'Last 30 days' }));
+    expect(start.value).toBe('2026-10-14');
+    expect(end.value).toBe('2026-11-12');
+
+    await user.click(screen.getByRole('button', { name: 'This year' }));
+    expect(start.value).toBe('2026-01-01');
+
+    await user.click(screen.getByRole('button', { name: 'Last 5 years' }));
+    expect(start.value).toBe('2022-01-01');
+
+    await user.click(screen.getByRole('button', { name: 'Full record' }));
+    expect(start.value).toBe('2003-01-01');
+    expect(end.value).toBe('2026-11-12');
+  });
+
+  it('date errors and Enter submits; no request until Analyze', async () => {
+    render(<MapCard />);
+    const user = userEvent.setup();
+    const start = screen.getByLabelText('Start') as HTMLInputElement;
+    const end = screen.getByLabelText('End') as HTMLInputElement;
+
+    await user.clear(end);
+    expect(screen.getByText('Choose a start date and an end date.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analyze/ })).toBeDisabled();
+
+    await user.type(end, '2026-11-12');
+    await user.clear(start);
+    await user.type(start, '2026-12-01');
+    expect(screen.getByText('The start date must be before the end date.')).toBeInTheDocument();
+
+    await user.clear(start);
+    await user.type(start, '2003-01-01');
+    expect(dispatch).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    expect(dispatch).toHaveBeenCalled();
   });
 });

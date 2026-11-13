@@ -4,7 +4,8 @@ import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { useAppState } from '../../state/useAppState';
 import { useCoverage } from '../../api/hooks';
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
-import { formatNumber } from '../../lib/format';
+import { formatNumber, formatDate } from '../../lib/format';
+import type { AppState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
 type BoxDraft = { n: string; s: string; e: string; w: string };
@@ -47,6 +48,7 @@ export default function MapCard() {
   const [mode, setMode] = useState<'box' | 'point'>('box');
   const [boxDraft, setBoxDraft] = useState<BoxDraft | null>(null);
   const [pointDraft, setPointDraft] = useState<PointDraft>(emptyPoint);
+  const [dateDraft, setDateDraft] = useState<{ start: string; end: string } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [basemap, setBasemap] = useState<'street' | 'satellite'>('street');
   const [map, setMap] = useState<LeafletMap | null>(null);
@@ -54,18 +56,21 @@ export default function MapCard() {
   const [live, setLive] = useState<{ a: LatLng; b: LatLng } | null>(null);
 
   useEffect(() => {
-    if (!state || boxDraft) return;
-    if (state.area.kind === 'bbox') {
-      const [w, s, e, n] = state.area.bbox;
-      setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
-      setMode('box');
-    } else {
-      const [lat, lon] = state.area.point;
-      setPointDraft({ lat: String(lat), lon: String(lon), radius: String(state.area.radius_km) });
-      setMode('point');
-      setBoxDraft(emptyBox);
+    if (!state) return;
+    if (!boxDraft) {
+      if (state.area.kind === 'bbox') {
+        const [w, s, e, n] = state.area.bbox;
+        setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
+        setMode('box');
+      } else {
+        const [lat, lon] = state.area.point;
+        setPointDraft({ lat: String(lat), lon: String(lon), radius: String(state.area.radius_km) });
+        setMode('point');
+        setBoxDraft(emptyBox);
+      }
     }
-  }, [state, boxDraft]);
+    if (!dateDraft) setDateDraft({ start: state.start, end: state.end });
+  }, [state, boxDraft, dateDraft]);
 
   const b = boxDraft ?? emptyBox;
   const edges = parseEdges(b.n, b.s, b.e, b.w);
@@ -79,10 +84,37 @@ export default function MapCard() {
   const boxInRegion = edges && coverage ? coverage.regions.some((r) => insideRegion(edges, r.bbox as [number, number, number, number])) : false;
   const pointInside = pointValid && coverage ? coverage.regions.some((r) => pointInRegion(pLat, pLon, r.bbox as [number, number, number, number])) : false;
 
-  const canAnalyze = mode === 'box' ? (!!edges && !boxErr && !!boxInRegion) : (!!pointValid && !!pointInside);
-  const err = mode === 'box' ? boxErr : pointErr;
+  const canAnalyzeArea = mode === 'box' ? (!!edges && !boxErr && !!boxInRegion) : (!!pointValid && !!pointInside);
+  const areaErr = mode === 'box' ? boxErr : pointErr;
   const inRegion = mode === 'box' ? boxInRegion : pointInside;
   const area = mode === 'box' ? boxArea : pointArea;
+
+  const region = coverage?.regions.find((r) => mode === 'box' ? (edges && insideRegion(edges, r.bbox as [number, number, number, number])) : (pointValid && pointInRegion(pLat, pLon, r.bbox as [number, number, number, number]))) ?? coverage?.regions[0];
+  const covStart = region?.start ?? '';
+  const covEnd = region?.latest_date ?? region?.end ?? '';
+  const dd = dateDraft ?? { start: state?.start ?? '', end: state?.end ?? '' };
+  let dateErr: string | null = null;
+  if (!dd.start || !dd.end) dateErr = 'Choose a start date and an end date.';
+  else if (dd.start > dd.end) dateErr = 'The start date must be before the end date.';
+  else if ((covStart && dd.start < covStart) || (covEnd && dd.end > covEnd)) {
+    dateErr = covStart && covEnd ? `Data covers ${formatDate(covStart)} to ${formatDate(covEnd)}.` : 'Date out of range.';
+  }
+  const canAnalyze = canAnalyzeArea && !dateErr;
+
+  function iso(d: Date) { return d.toISOString().slice(0, 10); }
+  function presetRange(name: string) {
+    if (!covEnd) return null;
+    const end = new Date(covEnd);
+    if (name === '30') { const s = new Date(end); s.setDate(s.getDate() - 29); return { start: iso(s), end: covEnd }; }
+    if (name === 'year') return { start: `${end.getUTCFullYear()}-01-01`, end: covEnd };
+    if (name === '5') return { start: `${end.getUTCFullYear() - 4}-01-01`, end: covEnd };
+    if (name === 'full') return covStart ? { start: covStart, end: covEnd } : null;
+    return null;
+  }
+  const presetMatch = (name: string) => {
+    const r = presetRange(name);
+    return !!r && r.start === dd.start && r.end === dd.end;
+  };
 
   function startDraw(p: LatLng) { startRef.current = p; setLive({ a: p, b: p }); }
   function moveDraw(p: LatLng) { if (startRef.current) setLive({ a: startRef.current, b: p }); }
@@ -118,8 +150,12 @@ export default function MapCard() {
   }
 
   function analyze() {
-    if (mode === 'box' && edges) dispatch({ type: 'patch', patch: { area: { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] } } });
-    else if (mode === 'point' && pointValid) dispatch({ type: 'patch', patch: { area: { kind: 'point', point: [pLat, pLon], radius_km: pRad } } });
+    if (!canAnalyze) return;
+    const patch: Partial<AppState> = { start: dd.start, end: dd.end };
+    if (mode === 'box' && edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
+    else if (mode === 'point' && pointValid) patch.area = { kind: 'point', point: [pLat, pLon], radius_km: pRad };
+    dispatch({ type: 'patch', patch });
+    if (map && fitBounds) map.fitBounds(fitBounds, { padding: [20, 20] });
   }
 
   return (
@@ -178,7 +214,7 @@ export default function MapCard() {
                 const label = k === 'n' ? 'North edge' : k === 's' ? 'South edge' : k === 'e' ? 'East edge' : 'West edge';
                 return (
                   <label key={k} className={styles.label}>{label}
-                    <input className={styles.input} inputMode="decimal" value={b[k]} aria-describedby={err ? 'area-err' : undefined} aria-invalid={!!err}
+                    <input className={styles.input} inputMode="decimal" value={b[k]} aria-describedby={areaErr || (!inRegion && edges) ? 'area-err' : undefined} aria-invalid={!!areaErr}
                       onChange={(ev) => setBoxDraft((prev) => ({ ...(prev ?? emptyBox), [k]: ev.target.value }))} />
                   </label>
                 );
@@ -186,20 +222,34 @@ export default function MapCard() {
             </>
           ) : (
             <>
-              <label className={styles.label}>Latitude<input className={styles.input} inputMode="decimal" value={pointDraft.lat} aria-describedby={err ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lat: e.target.value }))} /></label>
-              <label className={styles.label}>Longitude<input className={styles.input} inputMode="decimal" value={pointDraft.lon} aria-describedby={err ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lon: e.target.value }))} /></label>
-              <label className={styles.label}>Radius (km)<input className={styles.input} inputMode="decimal" value={pointDraft.radius} aria-describedby={err ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, radius: e.target.value }))} /></label>
+              <label className={styles.label}>Latitude<input className={styles.input} inputMode="decimal" value={pointDraft.lat} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lat: e.target.value }))} /></label>
+              <label className={styles.label}>Longitude<input className={styles.input} inputMode="decimal" value={pointDraft.lon} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lon: e.target.value }))} /></label>
+              <label className={styles.label}>Radius (km)<input className={styles.input} inputMode="decimal" value={pointDraft.radius} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, radius: e.target.value }))} /></label>
             </>
           )}
           <div className={styles.size}>
             <div className={styles.sizeLabel}>Size</div>
             <div className={styles.sizeValue}>{area !== null ? `${formatNumber(area)} km²` : '—'}</div>
           </div>
-          <button className={styles.analyze} type="submit" disabled={!canAnalyze} aria-describedby={err ? 'area-err' : undefined}>Analyze this area →</button>
         </div>
-        {err ? <div id="area-err" className={styles.error}>{err}</div>
+        {areaErr ? <div id="area-err" className={styles.error}>{areaErr}</div>
           : !inRegion && ((mode === 'box' && edges) || (mode === 'point' && pointValid)) ? <div id="area-err" className={styles.error}>This area is outside the covered regions.</div>
           : <div className={styles.helper}>Decimal degrees, with minus for south and west (18°S = −18). Drawing on the map fills these in.</div>}
+
+        <div className={`${styles.row} ${styles.datesRow}`}>
+          <div className={styles.sizeLabel}>Dates</div>
+          <label className={styles.label}>Start<input className={styles.input} type="date" value={dd.start} min={covStart || undefined} max={covEnd || undefined} aria-describedby={dateErr ? 'date-err' : undefined} onChange={(e) => setDateDraft((p) => ({ ...(p ?? dd), start: e.target.value }))} /></label>
+          <label className={styles.label}>End<input className={styles.input} type="date" value={dd.end} min={covStart || undefined} max={covEnd || undefined} aria-describedby={dateErr ? 'date-err' : undefined} onChange={(e) => setDateDraft((p) => ({ ...(p ?? dd), end: e.target.value }))} /></label>
+          <div className={styles.modeGroup} role="group" aria-label="Date presets">
+            {[
+              ['30', 'Last 30 days'], ['year', 'This year'], ['5', 'Last 5 years'], ['full', 'Full record'],
+            ].map(([k, label]) => (
+              <button key={k} type="button" className={styles.modeBtn} aria-pressed={presetMatch(k)} onClick={() => { const r = presetRange(k); if (r) setDateDraft(r); }}>{label}</button>
+            ))}
+          </div>
+          <button className={styles.analyze} type="submit" disabled={!canAnalyze} aria-describedby={dateErr ? 'date-err' : (areaErr || (!inRegion && ((mode === 'box' && edges) || (mode === 'point' && pointValid)))) ? 'area-err' : undefined}>Analyze this area →</button>
+        </div>
+        {dateErr ? <div id="date-err" className={styles.error}>{dateErr}</div> : null}
       </form>
     </div>
   );
