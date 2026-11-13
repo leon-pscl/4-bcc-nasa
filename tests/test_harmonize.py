@@ -44,9 +44,9 @@ def test_validation_r():
     from firecal.harmonize.validate import validate
     v = validate(cd, cal, settings, harm)
     for label in ("calibration_years", "validation_years"):
-        for y, m in v[label].items():
-            assert m["r"] > 0.9
-            assert abs(m["bias_pct"]) < 5
+        m = v[label]["metrics"]
+        assert m["pearson_r"] > 0.9
+        assert abs(m["bias_pct"]) < 5
 
 
 def test_c4_no_sensor_platform():

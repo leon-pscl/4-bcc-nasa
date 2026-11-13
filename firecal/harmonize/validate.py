@@ -1,26 +1,105 @@
 """Validation metrics for harmonization."""
 
-import json
-import os
-
 import numpy as np
 import pandas as pd
 
 
-def _lookup_k(cal, tile, month):
-    sub = cal[(cal["tile_id"] == tile) & (cal["month"] == month)]
-    if len(sub):
-        return float(sub.iloc[0]["k"])
-    sub = cal[(cal["tile_id"] == tile) & (cal["month"] == 0)]
-    if len(sub):
-        return float(sub.iloc[0]["k"])
-    sub = cal[(cal["tile_id"] == "ALL") & (cal["month"] == month)]
-    if len(sub):
-        return float(sub.iloc[0]["k"])
-    sub = cal[(cal["tile_id"] == "ALL") & (cal["month"] == 0)]
-    if len(sub):
-        return float(sub.iloc[0]["k"])
-    raise ValueError("no k")
+def _lookup_k_series(cal, cd):
+    # merge k onto celldays rows by tile_id + month, with fallback
+    cal = cal.copy()
+    cal["month"] = cal["month"].astype(int)
+    # build a lookup dict
+    lookup = {}
+    for _, r in cal.iterrows():
+        lookup.setdefault(r["tile_id"], {})[int(r["month"])] = float(r["k"])
+    # fallback helpers
+    all_month = {m: lookup.get("ALL", {}).get(m) for m in range(1, 13)}
+    all_all = lookup.get("ALL", {}).get(0)
+    tile_all = {}
+    for t, d in lookup.items():
+        if t == "ALL":
+            continue
+        # use month 0 if present else mean
+        tile_all[t] = d.get(0, None)
+        if tile_all[t] is None and d:
+            tile_all[t] = list(d.values())[0]
+
+    def k_for(tile, month):
+        d = lookup.get(tile, {})
+        if month in d:
+            return d[month]
+        if 0 in d:
+            return d[0]
+        if all_month.get(month) is not None:
+            return all_month[month]
+        if all_all is not None:
+            return all_all
+        # last resort: any
+        for dd in lookup.values():
+            if dd:
+                return list(dd.values())[0]
+        return 1.0
+
+    out = cd.copy()
+    months = pd.to_datetime(out["date_local"]).dt.month
+    out["_k"] = [k_for(t, m) for t, m in zip(out["tile_id"], months)]
+    return out
+
+
+def _monthly(cd, cal, years):
+    cd = cd.copy()
+    cd["_date"] = pd.to_datetime(cd["date_local"]).dt.date
+    cd["_year"] = pd.to_datetime(cd["date_local"]).dt.year
+    cd["_month"] = pd.to_datetime(cd["date_local"]).dt.month
+
+    # outage days: dates with Aqua but no SNPP
+    snpp_dates = set(cd[cd["platform"] == "SNPP"]["_date"])
+    aqua_dates = set(cd[cd["platform"] == "Aqua"]["_date"])
+    outage_dates = aqua_dates - snpp_dates
+
+    aqua = cd[cd["platform"] == "Aqua"].copy()
+    aqua = _lookup_k_series(cal, aqua)
+    # exclude outage days
+    aqua = aqua[~aqua["_date"].isin(outage_dates)]
+
+    # monthly viirs: count SNPP rows
+    snpp = cd[cd["platform"] == "SNPP"].copy()
+    snpp["_year"] = pd.to_datetime(snpp["date_local"]).dt.year
+    snpp["_month"] = pd.to_datetime(snpp["date_local"]).dt.month
+
+    per_year = {}
+    all_viirs = []
+    all_modis = []
+    for y in years:
+        mv = [0.0] * 12
+        mm = [0.0] * 12
+        s_y = snpp[snpp["_year"] == y]
+        for m in range(1, 13):
+            mv[m - 1] = float(len(s_y[s_y["_month"] == m]))
+        a_y = aqua[aqua["_year"] == y]
+        for m in range(1, 13):
+            mm[m - 1] = float(a_y[a_y["_month"] == m]["_k"].sum())
+        per_year[y] = {
+            "monthly_viirs": mv,
+            "monthly_modis": mm,
+        }
+        all_viirs.extend(mv)
+        all_modis.extend(mm)
+
+    metrics = _metrics(all_viirs, all_modis)
+    metrics["monthly_viirs"] = all_viirs
+    metrics["monthly_modis"] = all_modis
+    for y in years:
+        mv = per_year[y]["monthly_viirs"]
+        mm = per_year[y]["monthly_modis"]
+        per_year[y]["metrics"] = _metrics(mv, mm)
+        per_year[y]["metrics"]["monthly_viirs"] = mv
+        per_year[y]["metrics"]["monthly_modis"] = mm
+    return {
+        "years": years,
+        "metrics": metrics,
+        "per_year": {str(y): per_year[y] for y in years},
+    }
 
 
 def _metrics(mv, mm):
@@ -36,85 +115,12 @@ def _metrics(mv, mm):
     return {"pearson_r": r, "bias_pct": bias, "median_abs_pct_error": mape}
 
 
-def _monthly(cd, cal, years):
-    result_per_year = {}
-    all_viirs = []
-    all_modis = []
-    for y in years:
-        mv = [0.0] * 12
-        mm = [0.0] * 12
-        snpp = cd[cd["platform"] == "SNPP"].copy()
-        snpp["_y"] = pd.to_datetime(snpp["date_local"]).dt.year
-        snpp["_m"] = pd.to_datetime(snpp["date_local"]).dt.month
-        snpp = snpp[snpp["_y"] == y]
-        for m in range(1, 13):
-            mv[m - 1] = float(len(snpp[snpp["_m"] == m]))
-        aqua = cd[cd["platform"] == "Aqua"].copy()
-        aqua["_y"] = pd.to_datetime(aqua["date_local"]).dt.year
-        aqua["_m"] = pd.to_datetime(aqua["date_local"]).dt.month
-        aqua = aqua[aqua["_y"] == y]
-        for m in range(1, 13):
-            sub = aqua[aqua["_m"] == m]
-            total = 0.0
-            for _, r in sub.iterrows():
-                # leave gap-fill (outage) days out: only modis_scaled-equivalent uses k;
-                # here Aqua cell-days x k for all Aqua rows
-                total += _lookup_k(cal, r["tile_id"], m)
-            mm[m - 1] = total
-        result_per_year[y] = {
-            "monthly_viirs": mv,
-            "monthly_modis": mm,
-        }
-        all_viirs.extend(mv)
-        all_modis.extend(mm)
-    # exclude outage months? leave as is; gap days handled by excluding gapfill via harmonized? 
-    # We'll keep monthly_modis as Aqua*k (includes outage days). To leave outage days out,
-    # subtract gap-fill contribution: recompute mm excluding days where SNPP had 0 across region.
-    # Determine outage dates
-    snpp_dates = set(pd.to_datetime(cd[cd["platform"] == "SNPP"]["date_local"]).dt.date)
-    aqua = cd[cd["platform"] == "Aqua"].copy()
-    aqua["_d"] = pd.to_datetime(aqua["date_local"]).dt.date
-    aqua["_y"] = pd.to_datetime(aqua["date_local"]).dt.year
-    aqua["_m"] = pd.to_datetime(aqua["date_local"]).dt.month
-    for y in years:
-        mm = [0.0] * 12
-        a_y = aqua[aqua["_y"] == y]
-        for _, r in a_y.iterrows():
-            d = r["_d"]
-            # outage day if no SNPP anywhere that day
-            snpp_that_day = cd[(cd["platform"] == "SNPP") & (pd.to_datetime(cd["date_local"]).dt.date == d)]
-            if len(snpp_that_day) == 0:
-                continue  # leave outage day out
-            m = r["_m"]
-            mm[m - 1] += _lookup_k(cal, r["tile_id"], m)
-        result_per_year[y]["monthly_modis"] = mm
-        # recompute all_modis
-    all_modis = []
-    for y in years:
-        all_modis.extend(result_per_year[y]["monthly_modis"])
-    agg_metrics = _metrics(all_viirs, all_modis)
-    per_year_metrics = {}
-    for y in years:
-        mv = result_per_year[y]["monthly_viirs"]
-        mm = result_per_year[y]["monthly_modis"]
-        per_year_metrics[y] = _metrics(mv, mm)
-        result_per_year[y]["metrics"] = per_year_metrics[y]
-    return {
-        "years": years,
-        "metrics": agg_metrics,
-        "per_year": {str(y): {**result_per_year[y], "metrics": per_year_metrics[y]} for y in years},
-    }
-
-
 def validate(celldays, calibration, settings, harmonized=None):
     cal_years = list(range(settings.CALIBRATION_YEARS[0], settings.CALIBRATION_YEARS[1] + 1))
     val_years = list(range(settings.VALIDATION_YEARS[0], settings.VALIDATION_YEARS[1] + 1))
     cal = _monthly(celldays, calibration, cal_years)
     val = _monthly(celldays, calibration, val_years)
-    # overall all years
-    all_res = _monthly(celldays, calibration, cal_years + val_years)
     return {
         "calibration_years": cal,
         "validation_years": val,
-        "overall": all_res["metrics"],
     }
