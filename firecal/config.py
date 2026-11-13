@@ -57,6 +57,8 @@ class Settings:
     FIRMS_SOURCES: dict = field(default_factory=lambda: {
         "MODIS": ("MODIS_SP", "MODIS_NRT"),
         "VIIRS": ("VIIRS_SNPP_SP", "VIIRS_SNPP_NRT"),
+        "NOAA20": ("VIIRS_NOAA20_SP", "VIIRS_NOAA20_NRT"),
+        "NOAA21": ("VIIRS_NOAA21_SP", "VIIRS_NOAA21_NRT"),
     })
     FIRMS_DAY_RANGE_MAX: int = 5
     FIRMS_TX_BUDGET: int = 4000
@@ -65,6 +67,8 @@ class Settings:
     FIRMS_BACKOFF_BASE_S: int = 5
     NRT_REFRESH_DAYS: int = 7
     VIIRS_SP_START: str = "2012-01-20"
+    NOAA20_SP_START: str = "2018-04-01"
+    NOAA21_SP_START: str = "2023-03-01"
 
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"

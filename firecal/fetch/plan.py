@@ -33,33 +33,24 @@ def build_plan(bbox, start, end, availability, settings, manifest=None, today=No
     end = _parse(end)
     avail = availability or {}
     max_days = settings.FIRMS_DAY_RANGE_MAX
-    viirs_start_min = _parse(settings.VIIRS_SP_START)
 
     chunks = []
-
-    # MODIS
-    modis_sp, modis_nrt = settings.FIRMS_SOURCES["MODIS"]
-    sp_end_modis = _parse(avail.get(modis_sp, (None, end))[1]) if modis_sp in avail else end
-    # segment 1: SP up to sp_end
-    s = max(start, date(2003, 1, 1))
-    sp_seg_end = min(end, sp_end_modis)
-    if s <= sp_seg_end:
-        chunks += _chunks_for_source(modis_sp, bbox, s, sp_seg_end, max_days)
-    # segment 2: NRT after
-    nrt_start = max(s, sp_seg_end + timedelta(days=1))
-    if nrt_start <= end:
-        chunks += _chunks_for_source(modis_nrt, bbox, nrt_start, end, max_days)
-
-    # VIIRS
-    viirs_sp, viirs_nrt = settings.FIRMS_SOURCES["VIIRS"]
-    sp_end_viirs = _parse(avail.get(viirs_sp, (None, end))[1]) if viirs_sp in avail else end
-    s = max(start, viirs_start_min)
-    sp_seg_end = min(end, sp_end_viirs)
-    if s <= sp_seg_end:
-        chunks += _chunks_for_source(viirs_sp, bbox, s, sp_seg_end, max_days)
-    nrt_start = max(s, sp_seg_end + timedelta(days=1))
-    if nrt_start <= end:
-        chunks += _chunks_for_source(viirs_nrt, bbox, nrt_start, end, max_days)
+    specs = [
+        ("MODIS", settings.SERIES_START),
+        ("VIIRS", settings.VIIRS_SP_START),
+        ("NOAA20", settings.NOAA20_SP_START),
+        ("NOAA21", settings.NOAA21_SP_START),
+    ]
+    for key, min_start in specs:
+        sp, nrt = settings.FIRMS_SOURCES[key]
+        sp_end = _parse(avail.get(sp, (None, end))[1]) if sp in avail else end
+        s = max(start, _parse(min_start))
+        sp_seg_end = min(end, sp_end)
+        if s <= sp_seg_end:
+            chunks += _chunks_for_source(sp, bbox, s, sp_seg_end, max_days)
+        nrt_start = max(s, sp_seg_end + timedelta(days=1))
+        if nrt_start <= end:
+            chunks += _chunks_for_source(nrt, bbox, nrt_start, end, max_days)
 
     if manifest and today is not None:
         today = _parse(today)

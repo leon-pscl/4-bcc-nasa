@@ -125,6 +125,17 @@ def test_c5_hand_check():
     assert abs(actual - expected) < 1e-6
 
 
+def test_c4_at_most_one_row_per_cell_date():
+    settings = Settings()
+    settings.CONFIDENCE_KEEP = ("low", "nominal", "high")
+    settings.KEEP_TYPES = (0,)
+    cd = generate(settings, "bolivia_east", seed=42)
+    cal = fit_calibration(cd, settings)
+    harm = build_harmonized(cd, cal, settings)
+    counts = harm.groupby(["region", "cell_lat_idx", "cell_lon_idx", "date_local"]).size()
+    assert counts.max() == 1
+
+
 def test_c4_no_sensor_platform():
     settings = Settings()
     settings.CONFIDENCE_KEEP = ("low", "nominal", "high")

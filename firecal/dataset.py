@@ -9,6 +9,7 @@ inputs changed are rebuilt.
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 
 DETECTIONS = "detections"
@@ -76,20 +77,26 @@ def partitions_of(settings, name):
 
 
 def write_partition(con, sql, settings, name, region, year):
-    """Write one (region, year) partition of a dataset."""
+    """Write one (region, year) partition of a dataset.
+
+    The target partition directory is wiped first so stale files from earlier
+    builds can never survive. The temp staging dir is unique per call.
+    """
     root = dataset_dir(settings, name)
     root.mkdir(parents=True, exist_ok=True)
-    tmp = root / "_tmp_write"
-    if tmp.exists():
-        for f in tmp.rglob("*"):
-            if f.is_file():
-                f.unlink()
-    tmp.mkdir(parents=True, exist_ok=True)
+    # clean orphaned staging dirs left by interrupted writes
+    for d in root.glob("_part_*"):
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+    import tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="_part_", dir=str(root)))
     con.execute(
         f"COPY ({sql}) TO '{tmp.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD, "
-        f"PARTITION_BY (region, year), OVERWRITE_OR_IGNORE)"
+        f"PARTITION_BY (region, year))"
     )
     target = root / f"region={region}" / f"year={year}"
+    if target.exists():
+        shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
     for f in tmp.rglob("*.parquet"):
         os.replace(f, target / f.name)
@@ -97,7 +104,7 @@ def write_partition(con, sql, settings, name, region, year):
         if d.is_dir() and not any(d.iterdir()):
             d.rmdir()
     if tmp.exists():
-        tmp.rmdir()
+        shutil.rmtree(tmp)
 
 
 def read_dataset(settings, name, regions=None):
@@ -106,9 +113,9 @@ def read_dataset(settings, name, regions=None):
     if not root.exists():
         return "(SELECT NULL WHERE FALSE)"
     if regions:
-        parts = [f"'{root.as_posix()}/region={r}/*/*.parquet'" for r in regions]
+        parts = [f"'{root.as_posix()}/region={r}/**/*.parquet'" for r in regions]
         return "read_parquet([" + ", ".join(parts) + "])"
-    return f"read_parquet('{root.as_posix()}/region=*/*/*.parquet')"
+    return f"read_parquet('{root.as_posix()}/region=*/**/*.parquet')"
 
 
 def data_version(settings, name):
