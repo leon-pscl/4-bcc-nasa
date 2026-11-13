@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 DETECTIONS = "detections"
@@ -18,10 +19,48 @@ HARMONIZED = "harmonized_daily"
 
 STATE_FILE = "_state.json"
 DATA_VERSION_FILE = "data_version.json"
+WRITER_LOCK = "_writer.lock"
+# bump when pipeline logic changes in a way that must invalidate partition fingerprints
+PIPELINE_VERSION = 3
 
 
 def processed_root(settings):
     return Path(settings.DATA_PROCESSED)
+
+
+def acquire_writer_lock(settings):
+    """One pipeline writer at a time. Raises SystemExit if another holds it."""
+    lock_path = processed_root(settings) / WRITER_LOCK
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            pid = int(lock_path.read_text().strip().split()[0])
+        except Exception:
+            pid = None
+        alive = False
+        if pid is not None:
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except OSError:
+                alive = False
+        if alive:
+            raise SystemExit(f"another pipeline process is already running (pid={pid}); exiting")
+        # stale lock from a dead process
+        lock_path.unlink(missing_ok=True)
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    os.write(fd, f"{os.getpid()} {datetime.now().isoformat()}\n".encode())
+    os.close(fd)
+    return lock_path
+
+
+def release_writer_lock(settings):
+    try:
+        (processed_root(settings) / WRITER_LOCK).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def dataset_dir(settings, name):
@@ -84,10 +123,6 @@ def write_partition(con, sql, settings, name, region, year):
     """
     root = dataset_dir(settings, name)
     root.mkdir(parents=True, exist_ok=True)
-    # clean orphaned staging dirs left by interrupted writes
-    for d in root.glob("_part_*"):
-        if d.is_dir():
-            shutil.rmtree(d, ignore_errors=True)
     import tempfile
     tmp = Path(tempfile.mkdtemp(prefix="_part_", dir=str(root)))
     con.execute(

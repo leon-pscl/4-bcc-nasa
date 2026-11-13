@@ -61,6 +61,7 @@ class Settings:
         "NOAA21": ("VIIRS_NOAA21_SP", "VIIRS_NOAA21_NRT"),
     })
     FIRMS_DAY_RANGE_MAX: int = 5
+    API_CACHE_ENTRIES: int = 512
     FIRMS_TX_BUDGET: int = 4000
     FIRMS_TX_WINDOW: int = 600
     FIRMS_RETRIES: int = 5
@@ -81,4 +82,10 @@ class Settings:
         s.DATA_RAW = os.environ.get("DATA_RAW", file_values.get("DATA_RAW", s.DATA_RAW))
         s.DATA_PROCESSED = os.environ.get("DATA_PROCESSED", file_values.get("DATA_PROCESSED", s.DATA_PROCESSED))
         s.FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", file_values.get("FIRMS_MAP_KEY", s.FIRMS_MAP_KEY))
+        raw_cache = os.environ.get("API_CACHE_ENTRIES", file_values.get("API_CACHE_ENTRIES"))
+        if raw_cache:
+            try:
+                s.API_CACHE_ENTRIES = int(raw_cache)
+            except ValueError:
+                pass
         return s

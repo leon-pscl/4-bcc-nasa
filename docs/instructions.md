@@ -115,6 +115,15 @@ Backend:
   section 5.2.
 - The API had no tests, and the mock files didn't match the contract (the calendar mock had
   no `query.bbox`). See Stage 5.
+- **Duplicate (cell, date) counts:** the harmonized table counted every row twice in the
+  early years — the pipeline's calibration `UNION ALL` added a second region-wide ALL
+  month-0 row (the month-0 row is the region factor) on top of the one
+  `calibration_all_sql` already emits, and the `k_all` join then doubled every k-scaled
+  row (all of 2003-2011, plus NOAA and gap-fill days later). Guards that would have caught
+  it: one row per (region, platform, reference, tile_id, month) in C3, one row per
+  (region, cell_lat_idx, cell_lon_idx, date_local) in C4 — asserted after every build,
+  and byte-identical counts when the build is a no-op. And the month-0 ALL row must be
+  labeled `all`, not `all_month`.
 
 Frontend:
 
@@ -472,6 +481,13 @@ in `data_version.json`, C7). It is never the server clock. This keeps "this mont
 across time zones: a browser in Manila (UTC+8) can be a day ahead of a UTC server. An `end`
 later than the latest data date is rejected with a 400.
 
+**`latest_date` is the last *complete* local day.** A day is complete once the region recorded
+both its night and day satellite passes; a fetch that runs before the day pass (for example
+00:18 in the morning) sees only the night pass, so that day is not yet complete and
+`latest_date` stays at the previous complete day. The pipeline computes it from the
+detections table (a day with both `day` and `night` rows); if a fetch happens after the day
+pass, the day counts as complete.
+
 ### 5.3 Data version (decision D10)
 
 Every pipeline run ends by writing `data_version.json` (C7): a version string plus each
@@ -592,6 +608,15 @@ Shape: `calibration_years` and `validation_years` each have `years` (list), `met
 Metrics: Pearson r of monthly totals, bias % = (sum scaled - sum viirs) / sum viirs, and
 median absolute % error over months where VIIRS >= 10. `metrics` aggregates all years in
 the set; `per_year` is per year.
+
+**Measured bias for the Northern Thailand starter area** (97.3°E–101.5°E, 17.0°N–20.5°N): the
+held-out 2018–2021 bias is larger than the region-wide figure. Region-wide (southeast_asia,
+including 2021): −4.91%. Northern Thailand, per year: 2018: −9.73% · 2019: −10.10% ·
+2020: −18.47% · 2021: −12.92%. The reason for the larger Northern Thailand undercount has
+**not been established**; nothing should be inferred about cause (cloud, crop cycle,
+retrieval artefacts, or anything else) from these numbers alone. They are reported here so
+the area's scaled counts are not mistaken for the region-wide accuracy. If the reason is
+later shown, upgrade this note into a decision record.
 The series are `monthly_viirs` (S-NPP cell-days) and `monthly_modis`, which is
 **Aqua x k (scaled)**, not raw MODIS. Both come from C2 (Aqua cell-days x k(tile, month),
 and S-NPP cell-days), with VIIRS outage days excluded. Do not use C4: from 2012 on it

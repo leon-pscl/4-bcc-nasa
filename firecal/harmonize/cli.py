@@ -7,7 +7,8 @@ import sys
 import time
 
 from firecal.config import Settings
-from firecal.dataset import CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
+                             acquire_writer_lock, release_writer_lock)
 
 
 def main():
@@ -19,7 +20,11 @@ def main():
 
     from firecal.harmonize.db import rebuild
     t0 = time.time()
-    rebuilt = rebuild(settings, region=args.region)
+    lock = acquire_writer_lock(settings)
+    try:
+        rebuilt = rebuild(settings, region=args.region)
+    finally:
+        release_writer_lock(settings)
     print(f"rebuilt {len(rebuilt)} harmonized partitions in {time.time() - t0:.1f}s")
 
     if args.region:
@@ -42,17 +47,34 @@ def main():
               "bias", val["calibration_years"]["metrics"]["bias_pct"])
         print("validation r", val["validation_years"]["metrics"]["pearson_r"],
               "bias", val["validation_years"]["metrics"]["bias_pct"])
-        # coverage.json: latest_date is the last day of the harmonized series
+        # coverage.json: latest_date is the last COMPLETE local day
+        # (a day is complete once the region recorded both its night and day passes)
         h_root = os.path.join(settings.DATA_PROCESSED, HARMONIZED)
         if os.path.exists(h_root):
             import duckdb as _duck
             vcon = _duck.connect()
-            stats = vcon.execute(
-                "SELECT MIN(date_local), MAX(date_local) FROM read_parquet('" +
+            det_root = read_dataset(settings, DETECTIONS, [args.region])
+            try:
+                latest_row = vcon.execute(
+                    f"SELECT MAX(date_local) FROM ("
+                    f"SELECT date_local FROM {det_root} WHERE region = '{args.region}'"
+                    f" GROUP BY date_local HAVING COUNT(DISTINCT daynight) >= 2)"
+                ).fetchone()
+                if latest_row and latest_row[0]:
+                    latest = str(latest_row[0])
+                else:
+                    latest = str(vcon.execute(
+                        f"SELECT MAX(date_local) FROM {det_root} WHERE region = '{args.region}'"
+                    ).fetchone()[0])
+            except Exception:
+                latest = str(vcon.execute(
+                    "SELECT MAX(date_local) FROM read_parquet('" +
+                    h_root.replace(os.sep, '/') + "/region=" + args.region + "/*/*.parquet')"
+                ).fetchone()[0])
+            start = str(vcon.execute(
+                "SELECT MIN(date_local) FROM read_parquet('" +
                 h_root.replace(os.sep, '/') + "/region=" + args.region + "/*/*.parquet')"
-            ).fetchone()
-            latest = str(stats[1])
-            start = str(stats[0])
+            ).fetchone()[0])
             reg_path = os.path.join("config", "regions.json")
             meta = {}
             if os.path.exists(reg_path):
@@ -77,6 +99,8 @@ def main():
                 json.dump(out_cov, f, indent=2)
             os.replace(tmp, cov_path)
             print("latest_date:", latest)
+            vcon.close()
+        con.close()
     write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
 
 
