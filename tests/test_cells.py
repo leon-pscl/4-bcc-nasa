@@ -3,8 +3,8 @@ import math
 import pandas as pd
 
 from firecal.config import Settings
-from firecal.ingest.firms_csv import read_firms_csv
-from firecal.cells.celldays import build_celldays, validate_meta
+from firecal.ingest.db import read_firms_csv
+from firecal.cells.db import build_celldays, validate_meta
 
 
 def _sample_detections():

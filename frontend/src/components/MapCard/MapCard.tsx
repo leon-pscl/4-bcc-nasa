@@ -217,7 +217,12 @@ export default function MapCard() {
         </div>
         {!edges && (draft.n || draft.s || draft.e || draft.w) && (
           <div style={{ marginTop: 8, color: '#b2182b', fontSize: 13 }}>
-            Check the edges: north/south within ±90, east/west within ±180, south below north, west left of east.
+            Check the edges: north/south within ±90, east/west within ±180, south below north, west left of east, area ≤ 500,000 km².
+          </div>
+        )}
+        {edges && area !== null && area > 500000 && (
+          <div style={{ marginTop: 8, color: '#b2182b', fontSize: 13 }}>
+            Larger than the 500,000 km² limit. Draw a smaller area.
           </div>
         )}
       </div>

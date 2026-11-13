@@ -9,6 +9,45 @@ import duckdb
 from firecal.dataset import fingerprint, partition_key, read_dataset, write_partition
 
 
+def validate_meta(meta, settings):
+    if meta.get("grid_deg") != settings.GRID_DEG:
+        raise ValueError("celldays meta mismatch: grid_deg")
+    if meta.get("tile_deg") != settings.TILE_DEG:
+        raise ValueError("celldays meta mismatch: tile_deg")
+    if list(meta.get("confidence_keep", [])) != list(settings.CONFIDENCE_KEEP):
+        raise ValueError("celldays meta mismatch: confidence_keep")
+    if list(meta.get("keep_types", [])) != list(settings.KEEP_TYPES):
+        raise ValueError("celldays meta mismatch: keep_types")
+
+
+def build_celldays(detections, settings):
+    """DataFrame in -> DataFrame out (small inputs / tests)."""
+    import pandas as pd
+    from firecal.contracts import validate_celldays
+
+    df = detections.copy()
+    if "region" not in df.columns:
+        df["region"] = "test"
+    con = duckdb.connect()
+    try:
+        con.register("det", df)
+        sql = build_celldays_sql("det", settings.GRID_DEG, settings.TILE_DEG,
+                                 settings.CONFIDENCE_KEEP, settings.KEEP_TYPES)
+        out = con.execute(sql).df()
+    finally:
+        con.close()
+    if len(out):
+        out["cell_lat_idx"] = out["cell_lat_idx"].astype("int32")
+        out["cell_lon_idx"] = out["cell_lon_idx"].astype("int32")
+        out["n_detections"] = out["n_detections"].astype("int32")
+        out["frp_sum"] = out["frp_sum"].astype("float64")
+        out["tile_id"] = out["tile_id"].astype("string")
+        out["platform"] = out["platform"].astype("string")
+        out["date_local"] = pd.to_datetime(out["date_local"]).dt.date
+    validate_celldays(out)
+    return out
+
+
 def build_celldays_sql(source_sql, grid_deg, tile_deg, confidence_keep, keep_types):
     conf = ", ".join("'" + c + "'" for c in confidence_keep)
     types = ", ".join(str(t) for t in keep_types)

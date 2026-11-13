@@ -108,7 +108,9 @@ def area_validation(con, settings, region):
     """Held-out validation per starter area (Aqua x k vs SNPP cell-days)."""
     from firecal.harmonize.db import calibration_sql
     cd = read_dataset(settings, "celldays", [region])
-    cal = calibration_sql(cd, settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS)
+    shrink = getattr(settings, "SHRINK_M", 0)
+    cal = calibration_sql(cd, settings.CALIBRATION_YEARS,
+                          settings.MIN_CALIBRATION_CELLDAYS, shrink)
     con.execute("CREATE OR REPLACE TEMP VIEW cd_v AS SELECT * FROM " + cd)
     con.execute("CREATE OR REPLACE TEMP VIEW cal_v AS " + cal)
     print("=== validation per starter area")

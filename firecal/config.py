@@ -33,6 +33,7 @@ class Settings:
     CALIBRATION_YEARS: tuple = (2013, 2017)
     VALIDATION_YEARS: tuple = (2018, 2021)
     MIN_CALIBRATION_CELLDAYS: int = 30
+    SHRINK_M: int = 30
     MIN_BASELINE_YEARS: int = 5
     MAX_AREA_KM2: int = 500_000
     MAX_MAP_CELLS: int = 20_000

@@ -579,19 +579,23 @@ message, if they don't match.
 | `tile_id` | string | |
 | `date_local` | date | |
 | `value` | float64 | VIIRS-equivalent cell-days (1.0 for a VIIRS cell-day, `k` for a MODIS one) |
-| `basis` | string | `viirs`, `modis_scaled`, `modis_gapfill` |
+| `basis` | string | `viirs`, `viirs_noaa20`, `viirs_noaa21`, `modis_scaled`, `modis_gapfill` |
 
 **No `sensor` or `platform` column.** This is the table every analysis reads.
 
 ### C5 `validation/<region>.json` (written by Stage 3)
 
-Shape: calibration_years and validation_years each have years, metrics, per_year.
-(held out): Pearson r of monthly totals, bias % = (Σscaled − Σviirs) / Σviirs, and median
-absolute % error over months where VIIRS ≥ 10. "Overall" covers all of those years together.
-Also includes the monthly series behind the metrics, so the Methods tab can chart them:
-`monthly_viirs` (S-NPP cell-days) and `monthly_modis`, which is **Aqua × k (scaled)**, not
-raw MODIS. Both come from C2 (Aqua cell-days × k(tile, month), and S-NPP cell-days). Don't
-use C4: from 2012 on it holds VIIRS, so it has no MODIS to compare.
+Shape: `calibration_years` and `validation_years` each have `years` (list), `metrics`
+(`pearson_r`, `bias_pct`, `median_abs_pct_error`, `monthly_viirs`, `monthly_modis`) and
+`per_year` (keyed by year, same fields). The monthly series have 12 values each.
+
+Metrics: Pearson r of monthly totals, bias % = (sum scaled - sum viirs) / sum viirs, and
+median absolute % error over months where VIIRS >= 10. `metrics` aggregates all years in
+the set; `per_year` is per year.
+The series are `monthly_viirs` (S-NPP cell-days) and `monthly_modis`, which is
+**Aqua x k (scaled)**, not raw MODIS. Both come from C2 (Aqua cell-days x k(tile, month),
+and S-NPP cell-days), with VIIRS outage days excluded. Do not use C4: from 2012 on it
+holds VIIRS, so it has no MODIS to compare.
 
 ### C6 API responses (written by Stage 5)
 
@@ -882,19 +886,21 @@ Done when:
 Goal: one sensor-free daily series per cell.
 
 - `calibrate.py`: `fit_calibration(celldays, settings) -> DataFrame` (C3).
-  - Use **only** the calibration years, Aqua vs. SNPP.
-  - `k = Σ SNPP cell-days / Σ Aqua cell-days` (ratio of sums). A cell-day is a row of C2:
-    count rows, never sum `n_detections`.
-  - If the calibration years have no Aqua cell-days, raise a clear error. Never fall back to
-    k = 1.
-  - Fit per region; write `region`, `platform` (`Aqua`) and `reference` (`SNPP`) into C3.
-  - Fallback order when `modis_celldays < MIN_CALIBRATION_CELLDAYS`: tile × month → tile →
-    all tiles × month → all tiles. Record the level used.
+  - Fit per region; write `region`, `platform` and `reference` into C3. Also fit
+    platform = `NOAA20` and `NOAA21` vs `SNPP` over their overlap years (for continuity).
+  - Calibrated factors are shrunk (decision D14):
+    `k_month = (viirs + m*k_tile)/(aqua + m)`, `k_tile = (viirs_tile + m*k_region)/(aqua_tile + m)`,
+    with `SHRINK_M = 30`.
+  - Fallback order when `modis_celldays < MIN_CALIBRATION_CELLDAYS`: tile, all tiles, then
+    region (`ALL` rows). Record the level used.
 - `apply.py`: `build_harmonized(celldays, calibration, settings) -> DataFrame` (C4).
   - Drop dates before `SERIES_START`.
   - `SERIES_START ≤ date < SWITCH_DATE`: Aqua cell-days with `value = k(tile, month)`,
     `basis = modis_scaled`.
-  - `date ≥ SWITCH_DATE`: SNPP cell-days with `value = 1.0`, `basis = viirs`.
+  - `date >= SWITCH_DATE`: SNPP cell-days with `value = 1.0`, `basis = viirs`.
+  - Continuity (after S-NPP's last day, 2026-11-02): use NOAA-20 cell-days with
+    `value = k(NOAA-20 -> SNPP)`, `basis = viirs_noaa20`; if NOAA-20 has no data,
+    NOAA-21, `basis = viirs_noaa21`; if neither, Aqua x k gap fill, `basis = modis_gapfill`.
   - **Gap fill:** on dates ≥ `SWITCH_DATE` where SNPP has zero detections across the whole
     coverage area but Aqua has some, treat it as a VIIRS outage. Use Aqua × k with
     `basis = modis_gapfill`.

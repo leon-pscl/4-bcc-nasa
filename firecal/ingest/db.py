@@ -135,6 +135,73 @@ def expand(patterns):
     return paths
 
 
+def read_firms_csv(path):
+    """Read one FIRMS CSV into the C1 shape (used by tests and small files)."""
+    con = connect()
+    try:
+        cols = {r[0] for r in con.execute(
+            "DESCRIBE SELECT * FROM read_csv('" + str(path) + "', header=true, "
+            "auto_detect=true, sample_size=20000, nullstr='')").fetchall()}
+        sats = {r[0] for r in con.execute(
+            "SELECT DISTINCT satellite FROM read_csv('" + str(path) + "', header=true, "
+            "auto_detect=true, sample_size=20000, nullstr='')").fetchall()}
+        if "bright_ti4" in cols:
+            sensor = "VIIRS"
+            known = {"N", "SNPP", "N20", "1", "NOAA20", "N21", "2", "NOAA21"}
+        else:
+            sensor = "MODIS"
+            known = {"Terra", "T", "Aqua", "A"}
+        unknown = sorted({str(x).strip() for x in sats} - known)
+        if unknown:
+            raise ValueError(f"unknown satellite values: {unknown}")
+        sql = build_sql(con, str(path), sensor, "test", (-180, -90, 180, 90))
+        out = con.execute(sql).df()
+    finally:
+        con.close()
+    if len(out):
+        import pandas as pd
+        out = out.drop(columns=["region", "year"])
+        for col in ("sensor", "platform", "processing", "daynight",
+                    "confidence_raw", "confidence_class", "version",
+                    "source_file", "uid"):
+            out[col] = out[col].astype("string")
+        out["type"] = out["type"].astype("Int8")
+        out["acq_datetime_utc"] = pd.to_datetime(out["acq_datetime_utc"])
+        out["date_local"] = pd.to_datetime(out["date_local"]).dt.date
+        for col in ("latitude", "longitude", "frp", "scan", "track",
+                    "brightness", "bright_t31"):
+            out[col] = out[col].astype("float64")
+    else:
+        import pandas as pd
+        out = pd.DataFrame(columns=["uid", "sensor", "platform", "processing",
+                                    "latitude", "longitude", "acq_datetime_utc",
+                                    "date_local", "daynight", "confidence_raw",
+                                    "confidence_class", "frp", "scan", "track",
+                                    "brightness", "bright_t31", "type", "version",
+                                    "source_file"])
+        out["uid"] = out["uid"].astype("string")
+        out["sensor"] = out["sensor"].astype("string")
+        out["platform"] = out["platform"].astype("string")
+        out["processing"] = out["processing"].astype("string")
+        out["latitude"] = out["latitude"].astype("float64")
+        out["longitude"] = out["longitude"].astype("float64")
+        out["acq_datetime_utc"] = pd.to_datetime(out["acq_datetime_utc"])
+        out["daynight"] = out["daynight"].astype("string")
+        out["confidence_raw"] = out["confidence_raw"].astype("string")
+        out["confidence_class"] = out["confidence_class"].astype("string")
+        out["frp"] = out["frp"].astype("float64")
+        out["scan"] = out["scan"].astype("float64")
+        out["track"] = out["track"].astype("float64")
+        out["brightness"] = out["brightness"].astype("float64")
+        out["bright_t31"] = out["bright_t31"].astype("float64")
+        out["type"] = out["type"].astype("Int8")
+        out["version"] = out["version"].astype("string")
+        out["source_file"] = out["source_file"].astype("string")
+    from firecal.contracts import validate_detections
+    validate_detections(out)
+    return out
+
+
 def file_fingerprint(path):
     st = os.stat(path)
     return fingerprint(os.path.abspath(path), st.st_size, int(st.st_mtime))
@@ -204,7 +271,21 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
             if not parts:
                 continue
             union = "read_parquet([" + ", ".join(f"'{p}'" for p in parts) + "])"
-            part_sql = f"SELECT * FROM {union}"
+            # one row per uid; standard (SP) processing outranks near-real-time
+            # (NRT) for the same platform and day: SP replaces NRT ~5 months later
+            part_sql = f"""
+            SELECT r.* FROM (
+                SELECT u.*, ROW_NUMBER() OVER (
+                    PARTITION BY u.uid ORDER BY (u.processing = 'SP') DESC
+                ) AS rn
+                FROM {union} u
+                WHERE NOT (u.processing = 'NRT' AND EXISTS (
+                    SELECT 1 FROM {union} s
+                    WHERE s.processing = 'SP'
+                      AND s.platform = u.platform
+                      AND CAST(s.acq_datetime_utc AS DATE) = CAST(u.acq_datetime_utc AS DATE)))
+            ) r WHERE r.rn = 1
+            """
             if not dry_run:
                 write_partition(con, part_sql, settings, dataset, region, year)
             ds_state[key] = {"fingerprint": part_fp}

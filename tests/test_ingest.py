@@ -1,7 +1,6 @@
 import pandas as pd
 
-from firecal.ingest.firms_csv import read_firms_csv
-from firecal.ingest.store import merge_into_store
+from firecal.ingest.db import read_firms_csv
 
 
 def test_header_only_returns_empty(tmp_path):
@@ -49,41 +48,32 @@ def test_acq_time_parsing(tmp_path):
 
 
 def test_idempotent_merge(tmp_path):
+    from firecal.ingest.db import connect, ingest_files
+    from firecal.config import Settings
+    import pandas as pd
+    s = Settings()
+    s.DATA_PROCESSED = str(tmp_path / "processed")
     p = tmp_path / "a.csv"
     p.write_text("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight\n1,2,3,1,1,2024-01-01,100,A,Aqua,50,6.1NRT,3,1,D\n")
-    store = str(tmp_path / "store.parquet")
-    df = read_firms_csv(str(p))
-    merge_into_store(df, store)
-    merge_into_store(df, store)
-    out = pd.read_parquet(store)
+    con = connect()
+    ingest_files(con, [str(p)], "test_region", (-180, -90, 180, 90), s)
+    ingest_files(con, [str(p)], "test_region", (-180, -90, 180, 90), s)
+    out = pd.read_parquet(s.DATA_PROCESSED + "/detections/region=test_region/year=2024")
     assert len(out) == 1
 
 
-def test_sp_replaces_nrt():
-    # build two frames
-    import tempfile, os
-    from datetime import date
+def test_sp_replaces_nrt(tmp_path):
+    from firecal.ingest.db import connect, ingest_files
+    from firecal.config import Settings
     import pandas as pd
-    modis_nrt = pd.DataFrame({
-        "uid": ["u1"], "sensor": ["MODIS"], "platform": ["Aqua"], "processing": ["NRT"],
-        "latitude": [1.0], "longitude": [2.0],
-        "acq_datetime_utc": pd.to_datetime(["2024-01-01 10:00"]),
-        "date_local": [date(2024,1,1)], "daynight": ["D"], "confidence_raw": ["50"],
-        "confidence_class": ["nominal"], "frp": [1.0], "scan": [1.0], "track": [1.0],
-        "brightness": [1.0], "bright_t31": [1.0], "type": pd.array([0], dtype="Int8"),
-        "version": ["6.1NRT"], "source_file": ["x"],
-    })
-    modis_sp = modis_nrt.copy()
-    modis_sp["processing"] = "SP"
-    modis_sp["version"] = "6.1"
-    from firecal.contracts import validate_detections
-    validate_detections(modis_nrt)
-    validate_detections(modis_sp)
-    # same uid
-    assert modis_nrt.iloc[0]["uid"] == modis_sp.iloc[0]["uid"]
-    tmp = tempfile.mkdtemp()
-    store = os.path.join(tmp, "s.parquet")
-    merge_into_store(modis_nrt, store)
-    merge_into_store(modis_sp, store)
-    out = pd.read_parquet(store)
+    s = Settings()
+    s.DATA_PROCESSED = str(tmp_path / "processed")
+    nrt = tmp_path / "nrt.csv"
+    nrt.write_text("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight\n1,2,3,1,1,2024-01-01,100,A,Aqua,50,6.1NRT,3,1,D\n")
+    sp = tmp_path / "sp.csv"
+    sp.write_text("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight\n1,2,3,1,1,2024-01-01,100,A,Aqua,50,6.1,3,1,D\n")
+    con = connect()
+    ingest_files(con, [str(nrt)], "test_region", (-180, -90, 180, 90), s)
+    ingest_files(con, [str(sp)], "test_region", (-180, -90, 180, 90), s)
+    out = pd.read_parquet(s.DATA_PROCESSED + "/detections/region=test_region/year=2024")
     assert set(out["processing"]) == {"SP"}

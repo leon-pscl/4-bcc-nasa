@@ -25,22 +25,14 @@ def main():
     if args.region:
         import duckdb
         from firecal.dataset import read_dataset
-        from firecal.harmonize.db import (build_validation, calibration_all_sql,
-                                          calibration_sql)
+        from firecal.harmonize.db import build_validation, monthly_sql
         con = duckdb.connect()
         con.execute("PRAGMA threads=4")
         cd = read_dataset(settings, CELLDAYS, [args.region])
-        cal = calibration_sql(cd, settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS)
-        con.execute("CREATE OR REPLACE TEMP VIEW cal_raw AS " + cal)
-        con.execute("CREATE OR REPLACE TEMP VIEW cal_all AS "
-                    + calibration_all_sql("cal_raw", settings.MIN_CALIBRATION_CELLDAYS))
-        cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
-        con.execute(
-            "COPY (SELECT region, tile_id, CAST(month AS SMALLINT) AS month, k, "
-            "CAST(modis_celldays AS BIGINT) AS modis_celldays, "
-            "CAST(viirs_celldays AS BIGINT) AS viirs_celldays, level "
-            "FROM (SELECT * FROM cal_raw UNION ALL SELECT * FROM cal_all)) "
-            f"TO '{cal_path}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+        from firecal.harmonize.db import calibration_sql
+        shrink = getattr(settings, "SHRINK_M", 0)
+        cal = calibration_sql(cd, settings.CALIBRATION_YEARS,
+                              settings.MIN_CALIBRATION_CELLDAYS, shrink)
         val = build_validation(con, cd, cal, args.region,
                                settings.CALIBRATION_YEARS, settings.VALIDATION_YEARS)
         out = args.out_validation or os.path.join(settings.DATA_PROCESSED, "validation.json")
@@ -50,6 +42,33 @@ def main():
               "bias", val["calibration_years"]["metrics"]["bias_pct"])
         print("validation r", val["validation_years"]["metrics"]["pearson_r"],
               "bias", val["validation_years"]["metrics"]["bias_pct"])
+        # coverage.json: latest_date is the last day of the harmonized series
+        h_root = os.path.join(settings.DATA_PROCESSED, HARMONIZED)
+        if os.path.exists(h_root):
+            import duckdb as _duck
+            vcon = _duck.connect()
+            latest = vcon.execute(
+                "SELECT MAX(date_local) FROM read_parquet('" +
+                h_root.replace(os.sep, '/') + "/region=" + args.region + "/*/*.parquet')"
+            ).fetchone()[0]
+            bbox = settings.REGIONS.get(args.region)
+            cov_path = os.path.join(settings.DATA_PROCESSED, "coverage.json")
+            cov = []
+            if os.path.exists(cov_path):
+                try:
+                    cov = json.load(open(cov_path))
+                except Exception:
+                    cov = []
+            entry = {"name": args.region, "bbox": list(bbox) if bbox else None,
+                     "start": str(latest), "end": str(latest),
+                     "platforms": ["Aqua", "SNPP", "NOAA20", "NOAA21"],
+                     "latest_date": str(latest), "synthetic": False}
+            out_cov = [e for e in cov if e.get("name") != args.region] + [entry]
+            tmp = cov_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(out_cov, f, indent=2)
+            os.replace(tmp, cov_path)
+            print("latest_date:", latest)
     write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
 
 
