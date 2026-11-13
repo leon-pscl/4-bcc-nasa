@@ -513,7 +513,15 @@ during a daily update) never see a half-written file.
 **Partitioning (decision D8).** C1, C2 and C4 are Parquet datasets split by region and year:
 `<table>/region=<name>/year=<YYYY>/part-0.parquet`. This is Hive-style, so DuckDB reads `region`
 and `year` as columns and skips partitions a query doesn't need. A writer rebuilds one
-partition at a time and swaps it in with a rename. A daily update only rebuilds the
+partition at a time: each partition is built in a unique staging dir, the post-build
+integrity checks (one row per `(region, cell, date)` for C4) run on the staging copy, and
+the staging build is only swapped into `region=…/year=…/` after the check passes — a failed
+build leaves the old partition untouched and records nothing in the state file, so the next
+run rebuilds it. Before any of this, a writer takes an OS lock (`_writer.lock` in
+`data/processed/`, `msvcrt.locking` on Windows, `fcntl.flock` elsewhere) held for the life
+of the process; a second writer exits immediately with a clear message, and the OS releases
+the lock however the process exits — there is no PID check and no stale lock to clean up.
+A daily update only rebuilds the
 current year's partitions. The column tables below describe the rows inside a partition.
 Nothing loads a whole dataset into pandas: heavy steps run in DuckDB, or one partition at a
 time.
@@ -650,11 +658,11 @@ matching `If-None-Match` gets a 304.
   "years": [2003, 2004, "...", 2026],
   "values": [[12.0, 3.5, "... 12 numbers or null"], "... one list per year"],
   "partial": {"year": 2026, "month": 11, "through_day": 10},
-  "monthly_median": ["12 numbers"],
-  "monthly_p25": ["12 numbers"],
-  "monthly_p75": ["12 numbers"],
-  "anomaly": [["same shape as values"]],
-  "anomaly_pct": [["same shape as values; null when median is 0"]],
+  "monthly_median": ["12 numbers, or null when there is no baseline"],
+  "monthly_p25": ["12 numbers, or null when there is no baseline"],
+  "monthly_p75": ["12 numbers, or null when there is no baseline"],
+  "anomaly": [["same shape as values; null when the median is null"]],
+  "anomaly_pct": [["same shape as values; null when the median is 0 or missing"]],
   "annual_totals": ["one per year"],
   "partial_years": [2026],
   "baseline_years": [2003, 2025],
@@ -663,6 +671,13 @@ matching `If-None-Match` gets a 304.
   "synthetic": false
 }
 ```
+
+The **baseline** is the complete years of the region's full record before the current
+year, independent of `start`/`end` — `start`/`end` only choose the rows returned. A
+"this year" view therefore shows the same medians as the full record. When there is no
+baseline (no complete years before the current year), `monthly_median`/`monthly_p25`/
+`monthly_p75` and every `anomaly` entry are null and `baseline_warning` is set.
+Nulls flow through `anomaly` cells whose baseline median is missing.
 
 For a point query, `query` has `point` and `radius_km` in place of `bbox`.
 
@@ -675,10 +690,16 @@ For a point query, `query` has `point` and `radius_km` in place of `bbox`.
   "peak_year": {"year": 2010, "value": 34567.0},
   "current_month": {"year": 2026, "month": 11, "through_day": 10, "value": 210.0,
                     "median_same_span": 150.0, "pct_vs_median": 40.0},
+  "baseline_warning": null,
   "latest_data_date": "2026-11-10",
   "synthetic": false
 }
 ```
+
+`median_same_span` and `pct_vs_median` are null when there is no baseline (not 0.0),
+and `pct_vs_median` is null when the baseline median is 0. A baseline year with no rows
+in the same-days span counts as 0. `baseline_warning` is set when there are fewer than
+`MIN_BASELINE_YEARS` complete years before the current year.
 
 `GET /api/map` (optional `month=YYYY-MM` to focus on one month)
 
@@ -698,8 +719,7 @@ Other endpoints:
              "sensor": "MODIS", "platform": "Aqua", "processing": "NRT"}],
    "data_version": "a1b2c3d4e5f6g7h"}
   ```
-  `sensor`, `platform`, `processing` are present when requested via `all_sensors=1`;
-  by default (the harmonized series) they may be omitted.
+  `sensor`, `platform`, `processing` are included in every row.
 - `GET /api/hotspots.csv?all_sensors=0` streams the hotspot CSV.
 - `GET /api/calendar.csv` returns the calendar matrix as CSV.
 - `GET /api/calendar.png` returns the calendar as an image.
@@ -719,6 +739,15 @@ Other endpoints:
 ```
 
 `version` is the run's finish time in UTC. It changes only when the data does.
+
+### C8 `series_days.parquet` (written by the harmonize rebuild)
+
+One row per `(region, date_local)`: `{region, date_local, platform}` — the platform the
+harmonized series used that date: `Aqua` before `SWITCH_DATE`; after it, `SNPP` when SNPP
+has cell-days that day, else `NOAA20`, else `NOAA21`, else `Aqua`. The export and
+`/api/hotspots` join it instead of recomputing the platform per date (it replaced the
+per-request `DISTINCT platform, date_local` over `celldays`). If the file is missing, the
+export builds the same table on the fly from `celldays` (slow but correct).
 
 ---
 
@@ -1034,22 +1063,33 @@ are read. Every function takes `today` (section 5.2). The placeholder code from 
   - Sum `value` per year and month. Months entirely outside the range are `null`.
   - **`partial`** is set only when `end` is before the last day of its month:
     `{year, month, through_day: end.day}`. Otherwise it is `null`.
-  - **Baseline years** = complete years inside the range, excluding the current year. Set a
-    warning if there are fewer than `MIN_BASELINE_YEARS`.
-  - Monthly median, 25th and 75th percentiles across the baseline years.
-  - `anomaly = value − median`; `anomaly_pct = 100 × anomaly / median` (null when median = 0).
+  - **Baseline years** = the complete years of the region's full record before the
+    current year, independent of the requested range — `start`/`end` only choose the rows
+    returned, so "this year" and "last 30 days" show the same medians as the full record.
+    Set a warning if there are fewer than `MIN_BASELINE_YEARS`.
+  - Monthly median, 25th and 75th percentiles across the baseline years; a baseline year
+    with no rows in a month counts as 0. If there are no baseline years, the
+    `monthly_median`/`monthly_p25`/`monthly_p75` entries are null and `anomaly` is null,
+    and `baseline_warning` is set.
+  - `anomaly = value − median`; `anomaly_pct = 100 × anomaly / median` (null when the
+    median is 0 or missing).
 - `summary.py`: `summary(area, start, end, today) -> dict` (C6 summary shape).
   - Peak year uses complete years only.
   - **Current month is partial:** `current_month` covers day 1 of `today`'s month through
     `today`, compared with the median of the **same day span** in the baseline years. It is
-    `null` when `today` is outside `[start, end]`.
+    `null` when `today` is outside `[start, end]`. A baseline year with no rows in the
+    span counts as 0; the median is the true median (mean of the two middle values for an
+    even count). If there is no baseline, `median_same_span` and `pct_vs_median` are null
+    and `baseline_warning` is set; `pct_vs_median` is null when the median is 0.
 - `maps.py`: `map_cells(area, start, end, month=None) -> dict`. If there are more than
   `MAX_MAP_CELLS` cells, aggregate to a 5× coarser grid and set `aggregated_to`.
 - `export.py`:
   - `hotspot_rows(area, start, end, all_sensors=False) -> Iterator[DataFrame]`.
   - By default, export the detections that **feed the harmonized series** for each date
-    (Aqua before the switch, SNPP after, including gap-fill days), with the same filters.
-    `all_sensors=True` exports every detection.
+    (the `series_days` table: Aqua before the switch, SNPP after, including gap-fill days),
+    with the same source filters (`CONFIDENCE_KEEP`, `KEEP_TYPES`). `all_sensors=1`
+    exports every detection — it drops only the series-platform selection, never the
+    source filters (it is the full list of usable hotspots, not an unfiltered raw dump).
   - Columns: `date_local, acq_datetime_utc, latitude, longitude, confidence_class, frp,
     daynight, sensor, platform, processing`.
   - Yield chunks, so large exports stream.

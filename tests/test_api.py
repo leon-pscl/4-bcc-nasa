@@ -70,6 +70,7 @@ def env(tmp_path):
                      CAST(d.date_local AS DATE) AS date_local, CAST(d.date_local AS TIMESTAMP) AS acq_datetime_utc,
                      -4.975 AS latitude, -61.975 AS longitude, 'nominal' AS confidence_class,
                      10.0 AS frp, 'D' AS daynight,
+                     0 AS type,
                      CASE WHEN p.platform = 'Aqua' THEN 'MODIS' ELSE 'VIIRS' END AS sensor,
                      p.platform AS platform, 'NRT' AS processing,
                      d.year AS year
@@ -151,7 +152,10 @@ def test_summary_total_and_current_month(client):
     cur = d["current_month"]
     assert cur["through_day"] == 21
     assert cur["value"] == float(SEPT[2026] + 4.0)
-    assert cur["median_same_span"] == float(sorted(SEPT[y] for y in range(2017, 2026))[4])
+    # full-record baseline before 2026: complete years 2018-2025
+    # (the fixture's first row is 2017-06-15, so 2017 is not complete);
+    # true median of SEPT[2018..2025] = (7.0 + 8.0) / 2 = 7.5
+    assert cur["median_same_span"] == 7.5
     assert d["latest_data_date"] == "2026-09-21"
 
 

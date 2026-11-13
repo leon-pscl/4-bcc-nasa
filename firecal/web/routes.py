@@ -264,27 +264,34 @@ def create_app(settings=None, dist_dir=None):
         area, start, end, today, region, coverage_warning = area_args()
         all_sensors = request.args.get("all_sensors", "0") == "1"
         import duckdb
-        from firecal.analytics.export import (register_series_views, _series_predicate,
-                                              _area_where)
+        from firecal.analytics.export import (_series_days_relation, _area_where,
+                                              _source_filters)
         con = duckdb.connect()
         try:
             con.execute("PRAGMA threads=2")
             root = read_dataset(settings, DETECTIONS, [region] if region else None)
             cl = _area_where(area)
+            conf_sql, type_sql = _source_filters(settings)
+            series_join = ""
             if not all_sensors:
                 # only detections that feed the harmonized series
-                register_series_views(con, settings, region)
-                cl += " AND " + _series_predicate(settings.SWITCH_DATE)
+                _series_days_relation(con, settings, region)
+                series_join = ("JOIN series_days AS sd ON sd.region = d.region "
+                               "AND sd.date_local = d.date_local AND d.platform = sd.platform")
             total = con.execute(f"""
                 SELECT COUNT(*) FROM {root} AS d
+                {series_join}
                 WHERE {cl} AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
+                  AND {conf_sql} AND {type_sql}
             """).fetchone()[0]
             offset = (page - 1) * page_size
             rows_df = con.execute(f"""
-                SELECT date_local, acq_datetime_utc, latitude, longitude,
-                       confidence_class, frp, daynight, sensor, platform, processing
+                SELECT d.date_local, d.acq_datetime_utc, d.latitude, d.longitude,
+                       d.confidence_class, d.frp, d.daynight, d.sensor, d.platform, d.processing
                 FROM {root} AS d
+                {series_join}
                 WHERE {cl} AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
+                  AND {conf_sql} AND {type_sql}
                 ORDER BY d.acq_datetime_utc
                 LIMIT {page_size} OFFSET {offset}
             """).df()

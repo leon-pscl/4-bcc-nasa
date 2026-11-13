@@ -18,6 +18,7 @@ def _fixture(tmp_path):
     os.makedirs(root / "processed" / "harmonized_daily", exist_ok=True)
     rows = [
         # (lat_idx, lon_idx, date, value)
+        (0, 0, date(2003, 1, 1), 3.0),
         (0, 0, date(2003, 2, 14), 5.0),
         (0, 0, date(2003, 6, 1), 2.0),
         (0, 0, date(2003, 6, 2), 4.0),
@@ -101,7 +102,7 @@ def test_map_cells(tmp_path):
     result = map_cells(area, "2003-01-01", "2005-07-04", settings, region="test_region")
     assert result["grid_deg"] == 0.05
     assert len(result["cells"]) >= 1
-    assert abs(sum(c["value"] for c in result["cells"]) - 2.0 - 4.0 - 5.0 - 8.0 - 16.0 - 7.0 - 100.0 - 32.0) < 1e-6
+    assert abs(sum(c["value"] for c in result["cells"]) - 3.0 - 2.0 - 4.0 - 5.0 - 8.0 - 16.0 - 7.0 - 100.0 - 32.0) < 1e-6
 
 
 def test_calendar_hand_worked_totals_and_anomaly(tmp_path):
@@ -138,8 +139,8 @@ def test_calendar_hand_worked_totals_and_anomaly(tmp_path):
     # July anomaly: v=32, med=0 -> difference reported, percentage undefined
     assert result["anomaly"][2][6] == 32.0
     assert result["anomaly_pct"][2][6] is None
-    # annual totals (zeros in-range in 2003/2004 Feb for 2004/2005? no: Feb rows exist)
-    assert result["annual_totals"][0] == 11.0   # Feb 5 + June 6
+    # annual totals (zeros in-range elsewhere)
+    assert result["annual_totals"][0] == 14.0  # Jan 3 + Feb 5 + June 6
     assert result["annual_totals"][1] == 115.0  # Feb 7 + June 108
     assert result["annual_totals"][2] == 48.0   # June 16 + July 32
 
@@ -211,6 +212,62 @@ def test_summary_current_month_null_when_today_outside_range(tmp_path):
     assert result["current_month"] is not None
 
 
+def test_calendar_this_year_medians_equal_full_record(tmp_path):
+    """A "this year" range shows the same medians as the full record (spec 7)."""
+    settings = _fixture(tmp_path)
+    from firecal.analytics.calendar import calendar_matrix
+    from firecal.analytics.area import Area
+    area = Area.from_bbox(-1, -1, 1, 1)
+    full = calendar_matrix(area, "2003-01-01", "2005-07-04", "2005-07-04",
+                           settings, region="test_region")
+    this_year = calendar_matrix(area, "2005-01-01", "2005-07-04", "2005-07-04",
+                                settings, region="test_region")
+    assert full["monthly_median"] == this_year["monthly_median"]
+    assert full["monthly_p25"] == this_year["monthly_p25"]
+    assert full["monthly_p75"] == this_year["monthly_p75"]
+    assert full["baseline_years"] == this_year["baseline_years"]
+
+
+def test_calendar_empty_baseline_returns_nulls(tmp_path):
+    """No complete years before the current year: medians are null + warning."""
+    settings = _fixture(tmp_path)
+    from firecal.analytics.calendar import calendar_matrix
+    from firecal.analytics.area import Area
+    area = Area.from_bbox(-1, -1, 1, 1)
+    r = calendar_matrix(area, "2003-01-01", "2003-07-04", "2003-07-04",
+                        settings, region="test_region")
+    assert r["baseline_years"] == []
+    assert r["baseline_warning"]
+    assert all(v is None for v in r["monthly_median"])
+    assert all(v is None for v in r["monthly_p25"])
+    assert all(v is None for v in r["monthly_p75"])
+    assert all(all(v is None for v in row) for row in r["anomaly"])
+    # summary current_month stays, but its median fields are null
+    from firecal.analytics.summary import summary
+    s = summary(area, "2003-01-01", "2003-07-04", "2003-07-04",
+                settings, region="test_region")
+    assert s["current_month"] is not None
+    assert s["current_month"]["value"] is not None
+    assert s["current_month"]["median_same_span"] is None
+    assert s["current_month"]["pct_vs_median"] is None
+    assert s["baseline_warning"]
+
+
+def test_summary_same_days_zero_baseline_span_is_null_pct(tmp_path):
+    """A baseline year with no rows in the same-days span counts as 0; the
+    median is then 0 and pct_vs_median is null (not 0.0)."""
+    settings = _fixture(tmp_path)
+    from firecal.analytics.summary import summary
+    from firecal.analytics.area import Area
+    area = Area.from_bbox(-1, -1, 1, 1)
+    result = summary(area, "2003-01-01", "2005-07-04", "2004-07-04",
+                     settings, region="test_region")
+    assert result["current_month"]["through_day"] == 4
+    # baseline years before 2004: only 2003; July 2003 has no rows -> 0.0
+    assert result["current_month"]["median_same_span"] == 0.0
+    assert result["current_month"]["pct_vs_median"] is None
+
+
 def test_summary_peak_year_complete_years_only(tmp_path):
     settings = _fixture(tmp_path)
     from firecal.analytics.summary import summary
@@ -226,12 +283,8 @@ def test_summary_peak_year_complete_years_only(tmp_path):
     assert result["peak_year"] == {"year": 2004, "value": 115.0}
 
 
-def test_summary_upper_middle_median_on_even_count(tmp_path):
-    """Same-days span with an even number of baseline years takes the upper
-    middle value (2003 span = 5.0, 2005 span = 0.0) — but 2005 is the current
-    year here, so instead just exercise the helper directly."""
+def test_median_helper():
     from firecal.analytics.stats import median
     assert median([1.0, 3.0]) == 2.0
-    assert median([1.0, 3.0], upper_middle=True) == 3.0
     assert median([4.0, 1.0, 3.0]) == 3.0
     assert median([]) is None

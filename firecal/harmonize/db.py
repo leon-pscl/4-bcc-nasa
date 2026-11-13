@@ -10,7 +10,7 @@ import os
 
 import duckdb
 
-from firecal.dataset import fingerprint, read_dataset, write_partition, PIPELINE_VERSION
+from firecal.dataset import fingerprint, read_dataset, write_partition, PIPELINE_VERSION, SERIES_DAYS_FILE
 
 
 def base_counts_sql(cd, cal_years, platform="Aqua", reference="SNPP"):
@@ -112,6 +112,30 @@ def calibration_all_sql(cal_rel, min_cal, shrink_m=0, platform="Aqua", reference
       UNION ALL
       SELECT region, 0, aqua, viirs FROM region_tot
     ) AS u
+    """
+
+
+def _series_days_sql(cd, switch_date):
+    """The platform the harmonized series uses each (region, date_local).
+
+    Before SWITCH_DATE: Aqua. After it, whichever platform the series used that
+    day (SNPP, else NOAA-20, else NOAA-21, else Aqua), inferred from cell-days.
+    """
+    return f"""
+    SELECT region, date_local,
+      CASE WHEN date_local < DATE '{switch_date}' THEN 'Aqua'
+           WHEN has_snpp THEN 'SNPP'
+           WHEN has_noaa20 THEN 'NOAA20'
+           WHEN has_noaa21 THEN 'NOAA21'
+           ELSE 'Aqua' END AS platform
+    FROM (
+      SELECT region, date_local,
+             MAX(platform = 'SNPP') AS has_snpp,
+             MAX(platform = 'NOAA20') AS has_noaa20,
+             MAX(platform = 'NOAA21') AS has_noaa21
+      FROM {cd}
+      GROUP BY region, date_local
+    )
     """
 
 
@@ -471,6 +495,13 @@ def rebuild(settings, region=None, state=None):
                          settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region,
                          PIPELINE_VERSION)
     rebuilt = []
+
+    def _check_harmonized_staging(con, tmp_dir):
+        # check (b) on the staging copy: one row per (region, cell, date)
+        from firecal.harmonize.checks import check_harmonized_sql
+        root = f"read_parquet('{tmp_dir.as_posix()}/**/*.parquet')"
+        check_harmonized_sql(con, root)
+
     for key, meta in sorted(state.get("celldays", {}).items()):
         r, y = key.split("/")
         if region and r != region:
@@ -481,18 +512,24 @@ def rebuild(settings, region=None, state=None):
             continue
         harm = harmonized_sql(cd, "cal_final", settings.SERIES_START, settings.SWITCH_DATE)
         part_sql = f"SELECT * FROM ({harm}) WHERE year = {year}"
-        write_partition(con, part_sql, settings, HARMONIZED, r, year)
+        # staging build + check (b) before any swap; a failure leaves the old
+        # partition untouched and nothing in the state file is updated
+        write_partition(con, part_sql, settings, HARMONIZED, r, year,
+                        post_check=_check_harmonized_staging)
         ds_state[key] = {"fingerprint": part_fp}
         rebuilt.append(key)
+
+    # refresh series_days (region, date_local, platform the series uses that day);
+    # built from all regions so a single-region rebuild can't shrink the file
+    series_days_path = os.path.join(settings.DATA_PROCESSED, SERIES_DAYS_FILE)
+    tmp = series_days_path + ".tmp"
+    cd_all = read_dataset(settings, "celldays")
+    con.execute(f"COPY ({_series_days_sql(cd_all, settings.SWITCH_DATE)}) "
+                f"TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+    os.replace(tmp, series_days_path)
+
     if region:
         cal_state[region] = {"fingerprint": cal_fp}
     save_state(settings, state)
-    # fail loudly if the built harmonized dataset has duplicate (cell, date) pairs
-    from firecal.harmonize.checks import check_harmonized_sql
-    harm_path = os.path.join(settings.DATA_PROCESSED, "harmonized_daily")
-    if os.path.exists(harm_path):
-        root = f"read_parquet('{harm_path.replace(os.sep, '/')}/region={region}/*/*.parquet')" \
-            if region else f"read_parquet('{harm_path.replace(os.sep, '/')}/region=*/**/*.parquet')"
-        check_harmonized_sql(con, root)
     con.close()
     return rebuilt

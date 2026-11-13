@@ -20,11 +20,11 @@ def main():
 
     from firecal.harmonize.db import rebuild
     t0 = time.time()
-    lock = acquire_writer_lock(settings)
+    lock_fd = acquire_writer_lock(settings)
     try:
         rebuilt = rebuild(settings, region=args.region)
     finally:
-        release_writer_lock(settings)
+        release_writer_lock(lock_fd)
     print(f"rebuilt {len(rebuilt)} harmonized partitions in {time.time() - t0:.1f}s")
 
     if args.region:

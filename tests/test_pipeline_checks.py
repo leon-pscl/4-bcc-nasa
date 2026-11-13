@@ -96,3 +96,105 @@ def test_rebuild_idempotent(tmp_path):
     rebuilt = rebuild(settings, region="testreg")
     assert rebuilt == [], "second rebuild should be a no-op (fingerprint unchanged)"
     assert counts() == first
+
+
+def test_harmonized_staging_failure_keeps_old_partition_and_state(tmp_path, monkeypatch):
+    """Harmonized check (b) runs on the staging copy before any swap: a duplicate
+    row must not reach the parquet partitions, and state must not be updated."""
+    settings = _build(tmp_path)   # builds good partitions first
+    import pandas as pd
+    from firecal import harmonize
+    from firecal.dataset import load_state, save_state
+
+    part = os.path.join(settings.DATA_PROCESSED, "harmonized_daily",
+                        "region=testreg", "year=2015")
+    before_files = {f: open(os.path.join(part, f), "rb").read()
+                    for f in os.listdir(part) if f.endswith(".parquet")}
+    assert before_files
+
+    # force every partition to rebuild: wipe the harmonized fingerprints
+    state = load_state(settings)
+    state["harmonized_daily"] = {}
+    save_state(settings, state)
+    before_state = open(os.path.join(settings.DATA_PROCESSED, "_state.json"), "rb").read()
+
+    # inject a duplicate (cell, date) pair into the harmonized SQL
+    orig = harmonize.db.harmonized_sql
+
+    def dup_harmonized_sql(cd, cal_rel, series_start, switch_date):
+        base = orig(cd, cal_rel, series_start, switch_date)
+        return f"SELECT * FROM ({base}) UNION ALL (SELECT * FROM ({base}) LIMIT 1)"
+
+    monkeypatch.setattr(harmonize.db, "harmonized_sql", dup_harmonized_sql)
+    with pytest.raises(AssertionError):
+        harmonize.db.rebuild(settings, region="testreg")
+
+    # the old partition is unchanged
+    assert set(os.listdir(part)) == set(before_files)
+    for f, blob in before_files.items():
+        assert open(os.path.join(part, f), "rb").read() == blob
+    # state file not updated by the failed rebuild
+    assert open(os.path.join(settings.DATA_PROCESSED, "_state.json"), "rb").read() == before_state
+    # no staging leftovers
+    assert list((tmp_path / "processed" / "harmonized_daily").glob("_part_*")) == []
+
+
+def test_writer_lock_blocks_second_process(tmp_path):
+    """While one process holds the OS writer lock, a second process exits."""
+    import subprocess
+    import sys
+    from firecal.dataset import acquire_writer_lock, release_writer_lock
+    from firecal.config import Settings
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    s = Settings()
+    s.DATA_PROCESSED = str(tmp_path)
+    s.DATA_RAW = str(tmp_path / "raw")
+    fd = acquire_writer_lock(s)
+    try:
+        code = (
+            "import sys\n"
+            f"sys.path.insert(0, {repo!r})\n"
+            "from firecal.config import Settings\n"
+            "from firecal.dataset import acquire_writer_lock\n"
+            "s = Settings()\n"
+            f"s.DATA_PROCESSED = {str(tmp_path)!r}\n"
+            f"s.DATA_RAW = {str(tmp_path / 'raw')!r}\n"
+            "acquire_writer_lock(s)\n"
+        )
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                           cwd=repo)
+        out = r.stdout + r.stderr
+        assert r.returncode != 0
+        assert "only one writer" in out or "another pipeline process" in out
+    finally:
+        release_writer_lock(fd)
+
+
+def test_writer_lock_released(tmp_path):
+    """After release, the next process can take the lock."""
+    import subprocess
+    import sys
+    from firecal.dataset import acquire_writer_lock, release_writer_lock
+    from firecal.config import Settings
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    s = Settings()
+    s.DATA_PROCESSED = str(tmp_path)
+    s.DATA_RAW = str(tmp_path / "raw")
+    fd = acquire_writer_lock(s)
+    release_writer_lock(fd)
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {repo!r})\n"
+        "from firecal.config import Settings\n"
+        "from firecal.dataset import acquire_writer_lock, release_writer_lock\n"
+        "s = Settings()\n"
+        f"s.DATA_PROCESSED = {str(tmp_path)!r}\n"
+        "fd = acquire_writer_lock(s)\n"
+        "release_writer_lock(fd)\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       cwd=repo)
+    assert "ok" in r.stdout

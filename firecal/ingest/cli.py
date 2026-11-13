@@ -43,7 +43,7 @@ def main():
         sys.exit(1)
 
     from firecal.ingest.db import connect, expand, ingest_files
-    lock = acquire_writer_lock(settings)
+    lock_fd = acquire_writer_lock(settings)
     try:
         con = connect()
         paths = expand(args.files)
@@ -58,7 +58,7 @@ def main():
             print("partitions:", written[:10], "..." if len(written) > 10 else "")
         write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
     finally:
-        release_writer_lock(settings)
+        release_writer_lock(lock_fd)
 
 
 if __name__ == "__main__":
