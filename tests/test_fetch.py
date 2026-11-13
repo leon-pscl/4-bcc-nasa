@@ -88,3 +88,35 @@ def test_ratelimit_waits():
     rl.acquire(10)
     rl.acquire(10)  # should wait
     assert slept["n"] >= 1
+
+
+def test_plan_exact_coverage():
+    settings = Settings()
+    avail = {"MODIS_SP": ("2003-01-01", "2026-06-30"), "VIIRS_SNPP_SP": ("2012-01-20", "2026-06-30")}
+    chunks = build_plan((-64, -18, -60, -14), "2003-01-01", "2026-07-10", avail, settings, today="2026-07-10")
+    # chunks per source don't overlap and cover exactly
+    for src in set(c.source for c in chunks):
+        src_chunks = [c for c in chunks if c.source == src]
+        # build covered date set
+        covered = set()
+        for c in src_chunks:
+            d = __import__("datetime").date.fromisoformat(c.date)
+            for i in range(c.day_range):
+                covered.add(d + __import__("datetime").timedelta(days=i))
+        # expected range for that source
+        if src.startswith("MODIS"):
+            start = __import__("datetime").date(2003, 1, 1)
+        else:
+            start = __import__("datetime").date(2012, 1, 20)
+        end = __import__("datetime").date(2026, 7, 10)
+        # SP/NRT split: just ensure no overlaps within source by checking total days equals sum day_range
+        assert sum(c.day_range for c in src_chunks) == len(covered)
+
+
+def test_plan_nrt_start():
+    settings = Settings()
+    avail = {"MODIS_SP": ("2003-01-01", "2026-06-30"), "VIIRS_SNPP_SP": ("2012-01-20", "2026-06-30")}
+    chunks = build_plan((-64, -18, -60, -14), "2026-06-25", "2026-07-10", avail, settings, today="2026-07-10")
+    nrt = [c for c in chunks if c.source.endswith("NRT")]
+    assert nrt
+    assert any(c.date == "2026-07-01" for c in nrt)

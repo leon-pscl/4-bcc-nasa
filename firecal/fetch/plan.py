@@ -28,7 +28,7 @@ def _chunks_for_source(source, bbox, seg_start, seg_end, max_days):
     return out
 
 
-def build_plan(bbox, start, end, availability, settings, manifest=None):
+def build_plan(bbox, start, end, availability, settings, manifest=None, today=None):
     start = _parse(start)
     end = _parse(end)
     avail = availability or {}
@@ -61,19 +61,21 @@ def build_plan(bbox, start, end, availability, settings, manifest=None):
     if nrt_start <= end:
         chunks += _chunks_for_source(viirs_nrt, bbox, nrt_start, end, max_days)
 
-    # filter already-fetched (unless NRT refresh)
-    if manifest:
+    if manifest and today is not None:
+        today = _parse(today)
+        refresh = settings.NRT_REFRESH_DAYS
         filtered = []
         for c in chunks:
-            key = (c.source, c.bbox, c.date, c.day_range)
-            if key in manifest:
-                # NRT refresh: keep if ends within NRT_REFRESH_DAYS of today
-                if "NRT" in c.source:
-                    chunk_end = _parse(c.date) + timedelta(days=c.day_range - 1)
-                    # 'today' unknown here; keep all NRT refresh? Skip filtering for simplicity
-                    pass
+            key = (c.source, tuple(c.bbox), c.date, c.day_range)
+            if key not in manifest:
+                filtered.append(c)
                 continue
-            filtered.append(c)
+            if "NRT" in c.source:
+                chunk_end = _parse(c.date) + timedelta(days=c.day_range - 1)
+                if (today - chunk_end).days <= refresh:
+                    filtered.append(c)
         chunks = filtered
+    elif manifest:
+        chunks = [c for c in chunks if (c.source, tuple(c.bbox), c.date, c.day_range) not in manifest]
 
     return chunks

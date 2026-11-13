@@ -1,11 +1,14 @@
 """CLI for firecal.fetch."""
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import os
 import sys
 import time
+from datetime import date
 
 from firecal.config import Settings
 from firecal.fetch.cache import (
@@ -14,9 +17,6 @@ from firecal.fetch.cache import (
 from firecal.fetch.client import FirmsClient, FirmsError
 from firecal.fetch.plan import build_plan
 from firecal.fetch.ratelimit import RateLimiter
-
-
-REGIONS = {}
 
 
 def _settings():
@@ -44,9 +44,43 @@ def _load_manifest_set(settings):
     return s
 
 
+def _last_cached_date(settings, bbox):
+    p = _manifest_path(settings)
+    if not os.path.exists(p):
+        return None
+    dates = []
+    for line in open(p):
+        if not line.strip():
+            continue
+        e = json.loads(line)
+        if tuple(e["bbox"]) == tuple(bbox):
+            dates.append(e["date"])
+    if not dates:
+        return None
+    return max(dates)
+
+
 def _availability(client):
-    # best-effort: return empty dict; SP assumed available to end
-    return {}
+    raw = client.data_availability("all")
+    result = {}
+    if isinstance(raw, list):
+        for item in raw:
+            src = item.get("source") or item.get("Source")
+            mn = item.get("min_date") or item.get("start") or item.get("start_date")
+            mx = item.get("max_date") or item.get("end") or item.get("end_date")
+            if src:
+                result[src] = (mn, mx)
+    else:
+        reader = csv.DictReader(io.StringIO(str(raw)))
+        for row in reader:
+            src = row.get("data_id") or row.get("source") or row.get("Source")
+            mn = row.get("min_date") or row.get("start") or row.get("start_date")
+            mx = row.get("max_date") or row.get("end") or row.get("end_date")
+            if src:
+                result[src] = (mn, mx)
+    if not result:
+        raise FirmsError("could not parse data availability")
+    return result
 
 
 def cmd_status(args, settings):
@@ -56,39 +90,72 @@ def cmd_status(args, settings):
         return
     client = FirmsClient(key, settings.FIRMS_BASE_URL)
     print("key: ***")
-    print("availability:", client.data_availability("all")[:200])
+    avail = _availability(client)
+    for src, (mn, mx) in avail.items():
+        print(f"{src}: {mn} to {mx}")
 
 
 def cmd_backfill(args, settings):
     if args.region:
         bbox = _region_bbox(settings, args.region)
-        name = args.region
     else:
         bbox = tuple(float(x) for x in args.bbox.split(","))
-        name = args.name or "custom"
-    start = args.start
-    end = args.end
+    start = args.start or settings.SERIES_START
+    if args.end:
+        end = args.end
+    else:
+        end = date.today().isoformat()
+    today = date.today().isoformat()
+
     client = FirmsClient(settings.FIRMS_MAP_KEY, settings.FIRMS_BASE_URL)
-    avail = _availability(client)
-    manifest = _load_manifest_set(settings)
-    chunks = build_plan(bbox, start, end, avail, settings, manifest)
-    print(f"chunks: {len(chunks)}")
-    tx = sum(c.day_range for c in chunks)
-    print(f"estimated transactions: {tx}")
-    print(f"estimated time (s): {tx / settings.FIRMS_TX_BUDGET * settings.FIRMS_TX_WINDOW:.1f}")
-    if args.dry_run:
-        return
     if not settings.FIRMS_MAP_KEY:
         print("Missing FIRMS_MAP_KEY. Sign up at https://firms.modaps.eosdis.nasa.gov/api/map_key/")
-        return
-    rl = RateLimiter(settings.FIRMS_TX_BUDGET, settings.FIRMS_TX_WINDOW)
+        sys.exit(1)
+    try:
+        avail = _availability(client)
+    except FirmsError as exc:
+        print("error:", exc)
+        sys.exit(1)
+
+    manifest = _load_manifest_set(settings)
+    chunks = build_plan(bbox, start, end, avail, settings, manifest, today=today)
+
+    # per-source counts
+    from collections import defaultdict
+    counts = defaultdict(int)
+    txs = defaultdict(int)
     for c in chunks:
+        counts[c.source] += 1
+        txs[c.source] += c.day_range
+    for src in sorted(counts):
+        print(f"{src}: {counts[src]} chunks, {txs[src]} transactions")
+    print(f"total chunks: {len(chunks)}")
+    print(f"total transactions: {sum(txs.values())}")
+
+    if args.dry_run:
+        return
+
+    # key status before long run
+    try:
+        client.key_status()
+    except FirmsError as exc:
+        print("error:", exc)
+        sys.exit(1)
+
+    rl = RateLimiter(settings.FIRMS_TX_BUDGET, settings.FIRMS_TX_WINDOW)
+    for i, c in enumerate(chunks):
+        if i > 0 and i % 500 == 0:
+            try:
+                client.key_status()
+            except FirmsError as exc:
+                print("error:", exc)
+                sys.exit(1)
         rl.acquire(c.day_range)
         try:
             text = client.area_csv(c.source, c.bbox, c.day_range, c.date)
         except FirmsError as exc:
             print("error:", exc)
-            break
+            sys.exit(1)
         path = cache_path(settings.DATA_RAW, c.source, c.bbox, c.date, c.day_range)
         write_atomic(path, text)
         rows = max(0, len(text.splitlines()) - 1)
@@ -106,11 +173,38 @@ def cmd_backfill(args, settings):
 
 
 def cmd_update(args, settings):
-    # reuse backfill with end=today
-    args.start = None
-    args.end = time.strftime("%Y-%m-%d")
-    args.dry_run = False
-    cmd_backfill(args, settings)
+    if args.all:
+        regions = list(settings.REGIONS.keys())
+    elif args.region:
+        regions = [args.region]
+    else:
+        regions = [None]
+    for r in regions:
+        if r is None:
+            if not args.bbox:
+                print("need --region or --bbox")
+                sys.exit(1)
+            bbox = tuple(float(x) for x in args.bbox.split(","))
+            # reuse backfill args
+            ns = argparse.Namespace(
+                region=None, bbox=args.bbox, name=args.name,
+                start=None, end=None, dry_run=False,
+            )
+            # start from last cached date
+            last = _last_cached_date(settings, bbox)
+            ns.start = last if last else settings.SERIES_START
+            ns.end = None
+            cmd_backfill(ns, settings)
+        else:
+            bbox = _region_bbox(settings, r)
+            ns = argparse.Namespace(
+                region=r, bbox=None, name=None,
+                start=None, end=None, dry_run=False,
+            )
+            last = _last_cached_date(settings, bbox)
+            ns.start = last if last else settings.SERIES_START
+            ns.end = None
+            cmd_backfill(ns, settings)
 
 
 def main():
@@ -121,12 +215,14 @@ def main():
     p_backfill.add_argument("--region")
     p_backfill.add_argument("--bbox")
     p_backfill.add_argument("--name")
-    p_backfill.add_argument("--start", default="2003-01-01")
-    p_backfill.add_argument("--end", default="2026-11-10")
+    p_backfill.add_argument("--start", default=None)
+    p_backfill.add_argument("--end", default=None)
     p_backfill.add_argument("--dry-run", action="store_true")
     p_update = sub.add_parser("update")
     p_update.add_argument("--region")
     p_update.add_argument("--all", action="store_true")
+    p_update.add_argument("--bbox")
+    p_update.add_argument("--name")
     args = parser.parse_args()
     settings = _settings()
     if args.cmd == "status":

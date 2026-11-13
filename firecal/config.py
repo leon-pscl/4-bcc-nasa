@@ -45,7 +45,7 @@ class Settings:
         "MODIS": ("MODIS_SP", "MODIS_NRT"),
         "VIIRS": ("VIIRS_SNPP_SP", "VIIRS_SNPP_NRT"),
     })
-    FIRMS_DAY_RANGE_MAX: int = 10
+    FIRMS_DAY_RANGE_MAX: int = 5
     FIRMS_TX_BUDGET: int = 4000
     FIRMS_TX_WINDOW: int = 600
     FIRMS_RETRIES: int = 5

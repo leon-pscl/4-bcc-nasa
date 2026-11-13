@@ -20,18 +20,20 @@ def _mask(text: str, key: str) -> str:
 
 class FirmsClient:
     def __init__(self, map_key, base_url="https://firms.modaps.eosdis.nasa.gov",
-                 transport=requests.get, timeout=120, retries=5, backoff_base=5):
+                 transport=requests.get, timeout=120, retries=5, backoff_base=5,
+                 sleeper=time.sleep):
         self.map_key = map_key
         self.base_url = base_url.rstrip("/")
         self.transport = transport
         self.timeout = timeout
         self.retries = retries
         self.backoff_base = backoff_base
+        self.sleeper = sleeper
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}".replace(self.map_key, "***")
 
-    def _request(self, path: str) -> str:
+    def _request(self, path: str, validate_csv: bool = True) -> str:
         url = f"{self.base_url}{path}"
         last_exc = None
         for attempt in range(self.retries + 1):
@@ -40,24 +42,23 @@ class FirmsClient:
             except Exception as exc:  # network/timeout
                 last_exc = exc
                 if attempt < self.retries:
-                    time.sleep(self.backoff_base * (2 ** attempt))
+                    self.sleeper(self.backoff_base * (2 ** attempt))
                     continue
-                raise FirmsError(_mask(str(exc), self.map_key))
+                raise FirmsError(_mask(str(exc), self.map_key)) from None
             status = getattr(resp, "status_code", 200)
             text = getattr(resp, "text", "")
             if status >= 500:
                 last_exc = FirmsError(_mask(text[:200], self.map_key))
                 if attempt < self.retries:
-                    time.sleep(self.backoff_base * (2 ** attempt))
+                    self.sleeper(self.backoff_base * (2 ** attempt))
                     continue
-                raise last_exc
-            # validate CSV
-            first_line = text.splitlines()[0] if text.splitlines() else ""
-            if "latitude" not in first_line or "acq_date" not in first_line:
-                # invalid key or other error; do not retry
-                raise FirmsError(_mask(text[:200], self.map_key))
+                raise last_exc from None
+            if validate_csv:
+                first_line = text.splitlines()[0] if text.splitlines() else ""
+                if "latitude" not in first_line or "acq_date" not in first_line:
+                    raise FirmsError(_mask(text[:200], self.map_key)) from None
             return text
-        raise FirmsError(_mask(str(last_exc), self.map_key))
+        raise FirmsError(_mask(str(last_exc), self.map_key)) from None
 
     def area_csv(self, source, bbox, day_range, date=None):
         w, s, e, n = bbox
@@ -68,13 +69,8 @@ class FirmsClient:
 
     def data_availability(self, source="all"):
         path = f"/api/data_availability/csv/{self.map_key}/{source}"
-        text = self._request(path)
-        # parse simple CSV-ish into list of dicts not required; return raw text wrapped
-        return text
+        return self._request(path, validate_csv=False)
 
     def key_status(self):
         path = f"/api/map_key_status/{self.map_key}"
-        try:
-            return self._request(path)
-        except FirmsError:
-            return {}
+        return self._request(path, validate_csv=False)
