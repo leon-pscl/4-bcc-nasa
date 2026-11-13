@@ -13,6 +13,13 @@ def test_defaults():
 def test_from_env_override(monkeypatch, tmp_path):
     env = tmp_path / ".env"
     env.write_text("DATA_RAW=custom/raw\nFIRMS_MAP_KEY=secret123\n")
+    monkeypatch.setenv("DATA_RAW", "env/raw")
     s = Settings.from_env(str(env))
-    assert s.DATA_RAW == "custom/raw"
+    assert s.DATA_RAW == "env/raw"  # real env takes precedence
     assert s.FIRMS_MAP_KEY == "secret123"
+
+
+def test_repr_hides_key():
+    s = Settings(FIRMS_MAP_KEY="supersecret")
+    assert "supersecret" not in repr(s)
+    assert "supersecret" not in str(s)
