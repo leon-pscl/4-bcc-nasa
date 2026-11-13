@@ -6,7 +6,7 @@ area builds in about a second.
 
 import pandas as pd
 
-from firecal.analytics.stats import median
+from firecal.analytics.stats import median, complete_years_before
 from firecal.dataset import read_dataset
 
 
@@ -27,10 +27,25 @@ def calendar_matrix(area, start, end, today, settings, region=None):
           AND ({cell_filter})
         GROUP BY 1,2
     """).fetchall()
+    # the baseline is the complete years of the region's full record before the
+    # current year, independent of the requested range (spec section 7).
+    # Medians are taken over the full record inside the area, not over [start, end].
+    full_rows = con.execute(f"""
+        SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
+               EXTRACT(month FROM date_local)::INTEGER AS m,
+               SUM(value) AS v
+        FROM {root}
+        WHERE ({cell_filter})
+        GROUP BY 1,2
+    """).fetchall()
+    bounds = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root}").fetchone()
     con.close()
     matrix = {}
     for y, m, v in rows:
         matrix.setdefault(y, {})[m] = float(v)
+    full_matrix = {}
+    for y, m, v in full_rows:
+        full_matrix.setdefault(y, {})[m] = float(v)
 
     s_dt, e_dt = pd.to_datetime(start), pd.to_datetime(end)
     all_years = list(range(s_dt.year, e_dt.year + 1))
@@ -46,29 +61,18 @@ def calendar_matrix(area, start, end, today, settings, region=None):
             return v
         return 0.0 if in_range(y, m) else None
 
-    # baseline years: complete years inside [start, end], excluding the current year
+    # baseline years: complete years of the region's full record before the
+    # current year, independent of the requested range (spec section 7)
     cur_year = pd.to_datetime(today).year
-    baseline = []
-    for y in all_years:
-        if y == cur_year:
-            continue
-        if pd.Timestamp(y, 1, 1) >= s_dt and pd.Timestamp(y, 12, 31) <= e_dt:
-            baseline.append(y)
-    # never return an empty baseline (the frontend contract requires numbers);
-    # fall back to complete years incl. the current one, then to everything
-    if not baseline:
-        baseline = [y for y in all_years
-                    if pd.Timestamp(y, 1, 1) >= s_dt and pd.Timestamp(y, 12, 31) <= e_dt]
-    if not baseline:
-        baseline = list(all_years)
+    rec_start, rec_end = bounds
+    baseline = complete_years_before(rec_start, rec_end, cur_year)
     warning = (f"fewer than {settings.MIN_BASELINE_YEARS} complete years before the current year"
                if len(baseline) < settings.MIN_BASELINE_YEARS else None)
 
     medians, p25s, p75s = {}, {}, {}
     import numpy as np
     for m in months:
-        vals = sorted(value_at(y, m) for y in baseline)
-        vals = [v for v in vals if v is not None]
+        vals = sorted(full_matrix.get(y, {}).get(m, 0.0) for y in baseline)
         if vals:
             medians[m] = median(vals)
             p25s[m] = float(np.quantile(vals, 0.25))

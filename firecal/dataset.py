@@ -10,12 +10,12 @@ import hashlib
 import json
 import os
 import shutil
-from datetime import datetime
 from pathlib import Path
 
 DETECTIONS = "detections"
 CELLDAYS = "celldays"
 HARMONIZED = "harmonized_daily"
+SERIES_DAYS_FILE = "series_days.parquet"
 
 STATE_FILE = "_state.json"
 DATA_VERSION_FILE = "data_version.json"
@@ -29,38 +29,44 @@ def processed_root(settings):
 
 
 def acquire_writer_lock(settings):
-    """One pipeline writer at a time. Raises SystemExit if another holds it."""
+    """One pipeline writer at a time, via an OS lock held for the life of the process.
+
+    Windows: msvcrt.locking(LK_NBLCK) on one byte. Everywhere else: fcntl.flock LOCK_NB.
+    There is no PID check, so there is no stale lock to clean up: the OS releases the
+    lock when the process exits, however it exits. Raises SystemExit if another writer
+    holds it, so the second process exits with a clear message.
+    """
     lock_path = processed_root(settings) / WRITER_LOCK
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        try:
-            pid = int(lock_path.read_text().strip().split()[0])
-        except Exception:
-            pid = None
-        alive = False
-        if pid is not None:
-            try:
-                os.kill(pid, 0)
-                alive = True
-            except OSError:
-                alive = False
-        if alive:
-            raise SystemExit(f"another pipeline process is already running (pid={pid}); exiting")
-        # stale lock from a dead process
-        lock_path.unlink(missing_ok=True)
-        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.write(fd, f"{os.getpid()} {datetime.now().isoformat()}\n".encode())
-    os.close(fd)
-    return lock_path
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise SystemExit(
+            f"another pipeline process holds {lock_path}; only one writer runs at a time")
+    return fd
 
 
-def release_writer_lock(settings):
+def release_writer_lock(fd):
+    """Unlock and close the file descriptor from acquire_writer_lock."""
+    if fd is None:
+        return
     try:
-        (processed_root(settings) / WRITER_LOCK).unlink(missing_ok=True)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError:
         pass
+    os.close(fd)
 
 
 def dataset_dir(settings, name):
@@ -115,11 +121,14 @@ def partitions_of(settings, name):
     return out
 
 
-def write_partition(con, sql, settings, name, region, year):
+def write_partition(con, sql, settings, name, region, year, post_check=None):
     """Write one (region, year) partition of a dataset.
 
-    The target partition directory is wiped first so stale files from earlier
-    builds can never survive. The temp staging dir is unique per call.
+    The partition is first built in a unique staging dir. `post_check(con, tmp_dir)`,
+    when given, runs on the staging copy and must raise on bad data; the target
+    partition is only wiped after the check passes, so a failed build never touches
+    the existing data. The target partition directory is wiped first so stale files
+    from earlier builds can never survive.
     """
     root = dataset_dir(settings, name)
     root.mkdir(parents=True, exist_ok=True)
@@ -129,6 +138,12 @@ def write_partition(con, sql, settings, name, region, year):
         f"COPY ({sql}) TO '{tmp.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD, "
         f"PARTITION_BY (region, year))"
     )
+    try:
+        if post_check is not None:
+            post_check(con, tmp)
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     target = root / f"region={region}" / f"year={year}"
     if target.exists():
         shutil.rmtree(target)

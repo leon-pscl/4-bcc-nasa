@@ -1,86 +1,79 @@
 """Export analytics (Stage 4): paged hotspot rows, streamed from one query.
 
 By default only the detections that feed the harmonized series for each date are
-exported: Aqua before the switch date; after it, whichever platform the series
-used that day (SNPP, else NOAA-20, else NOAA-21, else Aqua). Pass
-all_sensors=True to export every detection.
+exported (the series_days table: Aqua before the switch date; after it, SNPP,
+else NOAA-20, else NOAA-21, else Aqua). all_sensors=True drops that selection and
+exports every detection, keeping the source filters (settings.CONFIDENCE_KEEP
+and settings.KEEP_TYPES). Rows stream in 8k-row chunks from one query.
 """
 
 import io
+import os
 
 import duckdb
 import pandas as pd
 
-from firecal.dataset import read_dataset
+from firecal.dataset import read_dataset, SERIES_DAYS_FILE
 
 
-def _series_predicate(switch_date):
-    """SQL fragment (parenthesized) selecting the detections that feed the series."""
-    return f"""
-    (
-        (d.date_local < DATE '{switch_date}' AND d.platform = 'Aqua')
-        OR (d.date_local >= DATE '{switch_date}' AND (
-            (EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'SNPP'
-                      AND date_local = d.date_local AND region = d.region)
-              AND d.platform = 'SNPP')
-            OR (NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'SNPP'
-                             AND date_local = d.date_local AND region = d.region)
-                AND EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'NOAA20'
-                             AND date_local = d.date_local AND region = d.region)
-                AND d.platform = 'NOAA20')
-            OR (NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'SNPP'
-                             AND date_local = d.date_local AND region = d.region)
-                AND NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'NOAA20'
-                                 AND date_local = d.date_local AND region = d.region)
-                AND EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'NOAA21'
-                             AND date_local = d.date_local AND region = d.region)
-                AND d.platform = 'NOAA21')
-            OR (NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'SNPP'
-                             AND date_local = d.date_local AND region = d.region)
-                AND NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'NOAA20'
-                                 AND date_local = d.date_local AND region = d.region)
-                AND NOT EXISTS (SELECT 1 FROM celldays_dates WHERE platform = 'NOAA21'
-                                 AND date_local = d.date_local AND region = d.region)
-                AND d.platform = 'Aqua')
-        ))
-    )
+def _source_filters(settings):
+    """Source filters from Settings: nominal/high confidence, type 0 by default."""
+    conf = ", ".join("'" + str(c).replace("'", "''") + "'" for c in settings.CONFIDENCE_KEEP)
+    types = ", ".join(str(int(t)) for t in settings.KEEP_TYPES)
+    conf_sql = f"d.confidence_class IN ({conf})"
+    type_sql = f"(d.type IS NULL OR d.type IN ({types}))" if types else "TRUE"
+    return conf_sql, type_sql
+
+
+def _series_days_relation(con, settings, region):
+    """TEMP VIEW series_days(region, date_local, platform) for this connection.
+
+    Prefers the series_days.parquet written by the harmonize rebuild; falls back
+    to building it from celldays when the file is missing (slow but correct).
     """
-
-
-def register_series_views(con, settings, region):
-    """Registers the temp table the series predicate reads (materialized once)."""
+    path = os.path.join(settings.DATA_PROCESSED, SERIES_DAYS_FILE)
+    if os.path.exists(path):
+        con.execute(f"CREATE OR REPLACE TEMP VIEW series_days AS "
+                    f"SELECT * FROM read_parquet('{path.replace(os.sep, '/')}')")
+        return
     celldays = read_dataset(settings, "celldays", [region] if region else None)
-    con.execute(f"CREATE OR REPLACE TEMP TABLE celldays_dates AS "
-                f"SELECT DISTINCT region, date_local, platform FROM {celldays}")
+    from firecal.harmonize.db import _series_days_sql
+    con.execute(f"CREATE OR REPLACE TEMP TABLE series_days AS "
+                f"{_series_days_sql(celldays, settings.SWITCH_DATE)}")
 
 
 def hotspot_rows(area, start, end, settings, all_sensors=False, region=None):
     """Yield DataFrames of detection rows in the area/date range, in batches."""
     con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='1GB'")
-    root = read_dataset(settings, "detections", [region] if region else None)
-
-    cl = _area_where(area)
-    if all_sensors:
-        series = "TRUE"
-    else:
-        register_series_views(con, settings, region)
-        series = _series_predicate(settings.SWITCH_DATE)
-
-    select = f"""
-        SELECT d.date_local, d.acq_datetime_utc, d.latitude, d.longitude,
-               d.confidence_class, d.frp, d.daynight, d.sensor, d.platform, d.processing
-        FROM {root} AS d
-        WHERE {cl}
-          AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
-          AND d.confidence_class IN ('nominal', 'high')
-          AND (d.type IS NULL OR d.type = 0)
-          AND {series}
-        ORDER BY d.acq_datetime_utc
-    """
-    con.execute(select)
     try:
+        con.execute("PRAGMA threads=4")
+        con.execute("PRAGMA memory_limit='4GB'")
+        root = read_dataset(settings, "detections", [region] if region else None)
+
+        cl = _area_where(area)
+        conf_sql, type_sql = _source_filters(settings)
+        if all_sensors:
+            series_join = ""
+            series_filter = "TRUE"
+        else:
+            _series_days_relation(con, settings, region)
+            series_join = ("JOIN series_days AS sd "
+                           "ON sd.region = d.region AND sd.date_local = d.date_local")
+            series_filter = "d.platform = sd.platform"
+
+        select = f"""
+            SELECT d.date_local, d.acq_datetime_utc, d.latitude, d.longitude,
+                   d.confidence_class, d.frp, d.daynight, d.sensor, d.platform, d.processing
+            FROM {root} AS d
+            {series_join}
+            WHERE {cl}
+              AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
+              AND {conf_sql}
+              AND {type_sql}
+              AND {series_filter}
+            ORDER BY d.acq_datetime_utc
+        """
+        con.execute(select)
         while True:
             df = con.fetch_df_chunk(8192)
             if df is None or len(df) == 0:
