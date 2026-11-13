@@ -27,13 +27,14 @@ vi.mock('../../api/hooks', () => ({
   useCalendar: () => ({ data: cal, isLoading: false, error: null }),
   useSummary: () => ({ data: sum }),
   useCoverage: () => ({ data: cov }),
+  useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-12', valid: true, coverage: cov }),
 }));
 vi.mock('react-chartjs-2', () => ({
   Line: () => <canvas aria-label="monthly-chart" />,
   Bar: () => <canvas aria-label="yearly-chart" />,
 }));
 vi.mock('chart.js', () => ({
-  Chart: { register: () => {} },
+  Chart: { register: () => {}, defaults: { font: {} } },
   CategoryScale: {}, LinearScale: {}, PointElement: {}, LineElement: {}, BarElement: {}, Filler: {}, Tooltip: {}, Legend: {},
 }));
 

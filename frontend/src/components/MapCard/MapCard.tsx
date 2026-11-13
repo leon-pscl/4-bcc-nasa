@@ -131,7 +131,11 @@ export default function MapCard() {
     else if (edges) rectBounds = [[edges.s, edges.w], [edges.n, edges.e]];
   }
   const circleBounds = mode === 'point' && pointValid ? [[pLat - pRad / 111, pLon - pRad / 111], [pLat + pRad / 111, pLon + pRad / 111]] as [[number, number], [number, number]] : null;
-  const fitBounds = mode === 'box' ? rectBounds : circleBounds;
+  let fitBounds = mode === 'box' ? rectBounds : circleBounds;
+  if (!fitBounds && coverage?.regions?.length) {
+    const rs = coverage.regions.map((r) => r.bbox);
+    fitBounds = [[Math.min(...rs.map((r) => r[1])), Math.min(...rs.map((r) => r[0]))], [Math.max(...rs.map((r) => r[3])), Math.max(...rs.map((r) => r[2]))]];
+  }
 
   const areaLabel = (() => {
     if (mode === 'point') return area ? `Selected area · ${formatNumber(area)} km²` : null;
@@ -161,7 +165,7 @@ export default function MapCard() {
   return (
     <div className={styles.card}>
       <div className={styles.mapWrap}>
-        <MapContainer center={[-16, -62]} zoom={5} zoomControl={false} ref={setMap} style={{ height: '100%', width: '100%' }} worldCopyJump={false} maxBounds={[[-90, -180], [90, 180]]} maxBoundsViscosity={1}>
+        <MapContainer center={[0, 110]} zoom={4} zoomControl={false} ref={setMap} style={{ height: '100%', width: '100%' }} worldCopyJump={false} maxBounds={[[-90, -180], [90, 180]]} maxBoundsViscosity={1}>
           {basemap === 'street'
             ? <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             : <TileLayer attribution="Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}

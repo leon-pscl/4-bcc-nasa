@@ -1,35 +1,26 @@
 import { useMemo } from 'react';
 import { useAppState } from '../../state/useAppState';
-import { useCalendar, useCoverage, useSummary } from '../../api/hooks';
-import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, quantileBins, binLabels } from '../../lib/colors';
+import { useCalendar, useSummary, useQueryParams } from '../../api/hooks';
+import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, countBins, binLabels } from '../../lib/colors';
 import { formatNumber, formatSignedPct, formatDate, formatLat, formatLon } from '../../lib/format';
-import type { AppState } from '../../state/urlState';
 import styles from './BurningCalendar.module.css';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-function buildParams(state: Pick<AppState, 'area' | 'start' | 'end'>) {
-  const p = new URLSearchParams();
-  if (state.area.kind === 'bbox') p.set('bbox', state.area.bbox.join(','));
-  else { p.set('point', state.area.point.join(',')); p.set('radius_km', String(state.area.radius_km)); }
-  p.set('start', state.start); p.set('end', state.end);
-  return p.toString();
-}
-
 export default function BurningCalendar() {
   const { state, dispatch } = useAppState();
-  const params = buildParams(state);
+  const { params, valid, coverage } = useQueryParams(state);
   const { data, isLoading, error } = useCalendar(params);
   const { data: summary } = useSummary(params);
-  const { data: coverage } = useCoverage();
 
   const bins = useMemo(() => {
     if (!data) return [];
     const vals = data.values.flat().filter((v): v is number => v !== null && v > 0);
-    return quantileBins(vals, 7);
+    return countBins(vals);
   }, [data]);
 
+  if (!valid) return <section className={styles.card}>Choose a valid area and dates, then Analyze.</section>;
   if (isLoading) return <section className={styles.card}>Loading calendar…</section>;
   if (error) return <section className={styles.card}>Couldn’t load calendar.</section>;
   if (!data) return null;
@@ -80,7 +71,7 @@ export default function BurningCalendar() {
     if (value === null) return `${m} ${year}: outside range`;
     const count = `${formatNumber(value)} hotspots`;
     if (isPartial && data.partial) {
-      if (summary?.current_month) {
+      if (summary?.current_month && summary.current_month.pct_vs_median != null) {
         const p = summary.current_month.pct_vs_median;
         const cmp = p === 0 ? 'at the median' : `${pctMag(p)} ${p > 0 ? 'above' : 'below'} the median`;
         return `${m} ${year}, days 1 to ${data.partial.through_day} so far: ${formatNumber(value)} hotspots, ${cmp} for the same days`;
@@ -96,7 +87,9 @@ export default function BurningCalendar() {
   function cellText(value: number | null, pct: number | null, isPartial: boolean) {
     if (value === null) return '–';
     if (view === 'count') return formatNumber(value);
-    if (isPartial && summary?.current_month) return formatSignedPct(summary.current_month.pct_vs_median);
+    if (isPartial && summary?.current_month) {
+      return summary.current_month.pct_vs_median == null ? 'n/a' : formatSignedPct(summary.current_month.pct_vs_median);
+    }
     if (pct === null) return 'n/a';
     return formatSignedPct(pct);
   }
@@ -193,7 +186,7 @@ export default function BurningCalendar() {
           <tfoot>
             <tr className={styles.medianRow}>
               <th scope="row" className={styles.yearCell}>MEDIAN<br /><span style={{ fontSize: 11, fontWeight: 400 }}>{data.baseline_years[0]}–{data.baseline_years[data.baseline_years.length - 1]}</span></th>
-              {data.monthly_median.map((m, i) => <td key={i} style={{ textAlign: 'center' }}>{formatNumber(m)}</td>)}
+              {data.monthly_median.map((m, i) => <td key={i} style={{ textAlign: 'center' }}>{m == null ? 'n/a' : formatNumber(m)}</td>)}
               <td style={{ textAlign: 'right', paddingRight: 6 }}>{formatNumber(medianTotal)}</td>
             </tr>
           </tfoot>

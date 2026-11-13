@@ -353,7 +353,7 @@ frontend/                     Stage 6: React + TypeScript + Vite
       urlState.ts             query state <-> URL hash (frontend-tasks.md section 4)
       useAppState.ts          React context + useReducer around urlState (no Redux, no Zustand)
     lib/
-      colors.ts               ramps (section 8), quantile bins, legend data, contrast text color
+      colors.ts               ramps (section 8), log-spaced count bins, legend data, contrast text color
       geo.ts                  bbox validation, area km2, point+radius (same rules as firecal/analytics/area.py)
       format.ts               number/date/percent formatting
     components/               one folder per component: Component.tsx + .module.css + .test.tsx
@@ -1216,8 +1216,9 @@ Done when (each sub-stage):
 
 - **Sequential (counts)**, ColorBrewer YlOrRd, 7 classes:
   `#ffffb2 #fed976 #feb24c #fd8d3c #fc4e2a #e31a1c #b10026`.
-  Zero gets a neutral color outside the ramp. Bins are quantiles of the non-zero monthly
-  values for the selected area, shown in the legend as ranges.
+  Zero gets a neutral color outside the ramp. Bins are 7 log-spaced bins from the 5th percentile
+  to the maximum of the non-zero monthly values for the selected area, rounded to 2 significant
+  figures, shown in the legend as ranges.
 - **Diverging (anomaly)**, ColorBrewer RdBu, 7 classes, red = above median:
   `#b2182b #ef8a62 #fddbc7 #f7f7f7 #d1e5f0 #67a9cf #2166ac`.
   Centered on 0, with symmetric bins (`frontend-tasks.md` section 2.3 gives the bin edges).

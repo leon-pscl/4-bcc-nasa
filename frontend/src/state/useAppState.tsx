@@ -22,30 +22,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (state) return;
-    if (initialHashEmpty && coverage) {
-      const sa = coverage.starter_areas[0];
-      const region = coverage.regions.find((r) => r.name === sa.region);
-      const area: AreaState = { kind: 'bbox', bbox: sa.bbox as [number, number, number, number] };
-      dispatch({ type: 'set', state: {
-        area,
-        start: region?.start ?? coverage.regions[0].start,
-        end: region?.latest_date ?? coverage.regions[0].latest_date,
-        view: 'count',
-        tab: 'comparisons',
-      }});
+    if (!coverage) return;
+    const sa = coverage.starter_areas[0];
+    const region = coverage.regions.find((r) => r.name === sa.region) ?? coverage.regions[0];
+    const defaultArea: AreaState = { kind: 'bbox', bbox: sa.bbox as [number, number, number, number] };
+    const defaults = {
+      area: defaultArea,
+      start: region.start,
+      end: region.latest_date,
+      view: 'count' as const,
+      tab: 'comparisons' as const,
+    };
+
+    if (initialHashEmpty) {
+      dispatch({ type: 'set', state: defaults });
       return;
     }
-    if (!initialHashEmpty) {
-      const parsed = parseHash(window.location.hash);
-      dispatch({ type: 'set', state: {
-        area: parsed.area ?? { kind: 'bbox', bbox: coverage?.starter_areas[0]?.bbox as [number, number, number, number] ?? [0,0,0,0] },
-        start: parsed.start ?? coverage?.regions[0]?.start ?? '',
-        end: parsed.end ?? coverage?.regions[0]?.latest_date ?? '',
-        view: parsed.view ?? 'count',
-        focus: parsed.focus,
-        tab: parsed.tab ?? 'comparisons',
-      }});
-    }
+
+    const parsed = parseHash(window.location.hash);
+    dispatch({ type: 'set', state: {
+      area: parsed.area ?? defaults.area,
+      start: parsed.start ?? defaults.start,
+      end: parsed.end ?? defaults.end,
+      view: parsed.view ?? defaults.view,
+      focus: parsed.focus,
+      tab: parsed.tab ?? defaults.tab,
+    }});
   }, [coverage, state, initialHashEmpty]);
 
   useEffect(() => {
