@@ -133,6 +133,15 @@ def create_app(settings=None):
         return resp
 
     # ---------- static/frontend ----------
+    def _today():
+        raw = os.environ.get("FIRECAL_TODAY")
+        if raw:
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                pass
+        return date.today()
+
     @app.route("/")
     def index():
         if os.path.exists(os.path.join(dist_dir, "index.html")):
@@ -148,7 +157,7 @@ def create_app(settings=None):
     def health():
         dv = _app_version(settings)
         cov = load_coverage(settings) or []
-        today = date.today()
+        today = _today()
         regions = []
         stale = False
         for r in cov:

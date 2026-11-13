@@ -421,6 +421,7 @@ in one place.
 | `VIIRS_SP_START` | `2012-01-20` | First date of VIIRS 375 m data; never request VIIRS before this |
 | `REFERENCE_PLATFORM` | `"SNPP"` | The satellite every other one is calibrated to. Aqua MODIS is calibrated to it now; NOAA-20/21 can be added later without changing C4 (decision D9) |
 | `API_CACHE_ENTRIES` | `512` | Size of the server-side response cache (Stage 5). Entries are keyed by data version, so a pipeline run makes them stale automatically |
+| `FIRECAL_TODAY` | *(unset)* | **Test-only** clock override for `/health`, `YYYY-MM-DD`. When set, `/health` computes `age_days` from it instead of the server clock, so the staleness check can be exercised deterministically. Unset in normal runs |
 | UI unit label | "Hotspots (harmonized)" | The Methods tab explains the unit: one fire cell-day in VIIRS-equivalent terms |
 
 Paths (`DATA_RAW`, `DATA_PROCESSED`) and `FIRMS_MAP_KEY` come from environment variables, with
