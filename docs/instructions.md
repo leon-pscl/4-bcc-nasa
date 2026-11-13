@@ -585,7 +585,7 @@ message, if they don't match.
 
 ### C5 `validation/<region>.json` (written by Stage 3)
 
-Metrics, by year and overall, for calibration years (in-sample) and validation years
+Shape: calibration_years and validation_years each have years, metrics, per_year.
 (held out): Pearson r of monthly totals, bias % = (Σscaled − Σviirs) / Σviirs, and median
 absolute % error over months where VIIRS ≥ 10. "Overall" covers all of those years together.
 Also includes the monthly series behind the metrics, so the Methods tab can chart them:

@@ -8,4 +8,5 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   jsxA11y.flatConfigs.recommended,
+  { plugins: { "react-hooks": (await import("eslint-plugin-react-hooks")).default }, rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" } },
 ];
