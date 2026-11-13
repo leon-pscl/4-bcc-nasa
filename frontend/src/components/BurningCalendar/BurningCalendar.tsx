@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useAppState } from '../../state/useAppState';
 import { useCalendar, useCoverage, useSummary } from '../../api/hooks';
-import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, quantileBins } from '../../lib/colors';
-import { formatNumber, formatSignedPct } from '../../lib/format';
+import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, quantileBins, binLabels } from '../../lib/colors';
+import { formatNumber, formatSignedPct, formatDate, formatLat, formatLon } from '../../lib/format';
 import type { AppState } from '../../state/urlState';
 import styles from './BurningCalendar.module.css';
 
@@ -35,24 +35,43 @@ export default function BurningCalendar() {
   if (!data) return null;
 
   const view = state.view;
-  const rows = data.years.map((y, i) => ({ year: y, values: data.values[i], anomaly: data.anomaly[i], anomalyPct: data.anomaly_pct[i], total: data.annual_totals[i] })).reverse();
+  const rows = data.years.map((y, i) => {
+    let values = data.values[i];
+    let total = data.annual_totals[i];
+    if (data.partial && y === data.partial.year) {
+      values = values.map((v, mi) => (mi > data.partial!.month - 1 ? null : v));
+      total = values.reduce<number>((a, v) => a + (v ?? 0), 0);
+    }
+    return { year: y, values, anomaly: data.anomaly[i], anomalyPct: data.anomaly_pct[i], total };
+  }).reverse();
   const completeMax = Math.max(1, ...rows.filter((r) => !data.partial_years.includes(r.year)).map((r) => r.total));
   const medianTotal = (() => {
-    const baseline = data.annual_totals.filter((_, i) => data.baseline_years.includes(data.years[i]) && !data.partial_years.includes(data.years[i]));
+    const baseline = data.years.map((y, i) => ({ y, t: data.annual_totals[i] }))
+      .filter((x) => data.baseline_years.includes(x.y) && !data.partial_years.includes(x.y))
+      .map((x) => x.t);
     if (!baseline.length) return 0;
     const s = [...baseline].sort((a,b)=>a-b); const m = Math.floor(s.length/2);
     return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
   })();
 
-  const areaName = (() => {
+  const subtitle = (() => {
     const q = data.query;
+    let name = 'Selected area';
     if (q.bbox && coverage) {
       const sa = coverage.starter_areas.find((x) => x.bbox.every((v, i) => v === q.bbox![i]));
-      if (sa) return sa.label;
-      const reg = coverage.regions.find((r) => q.bbox![0] >= r.bbox[0] && q.bbox![2] <= r.bbox[2] && q.bbox![1] >= r.bbox[1] && q.bbox![3] <= r.bbox[3]);
-      return reg?.label ?? 'Selected area';
+      if (sa) name = sa.label;
+      else {
+        const reg = coverage.regions.find((r) => q.bbox![0] >= r.bbox[0] && q.bbox![2] <= r.bbox[2] && q.bbox![1] >= r.bbox[1] && q.bbox![3] <= r.bbox[3]);
+        name = reg?.label ?? 'Selected area';
+      }
     }
-    return 'Selected area';
+    if (q.bbox) {
+      const [w, s, e, n] = q.bbox;
+      const coords = `${formatLat(s)}–${formatLat(n)}, ${formatLon(w)}–${formatLon(e)}`;
+      const area = q.area_km2 != null ? `${formatNumber(q.area_km2)} km²` : '';
+      return `Hotspots (harmonized) per month · ${name} · ${coords} · ${area} · ${formatDate(q.start)} – ${formatDate(q.end)}`;
+    }
+    return `Hotspots (harmonized) per month · ${name} · ${formatDate(q.start)} – ${formatDate(q.end)}`;
   })();
 
   function pctMag(n: number) { return `${Math.abs(Math.round(n))}%`; }
@@ -98,7 +117,7 @@ export default function BurningCalendar() {
       <div className={styles.header}>
         <div>
           <h2 className={styles.title}>Burning calendar</h2>
-          <div className={styles.subtitle}>Hotspots (harmonized) per month · {areaName} · {data.query.start} – {data.query.end}</div>
+          <div className={styles.subtitle}>{subtitle}</div>
         </div>
         <div className={styles.viewToggle} role="group" aria-label="View">
           <button type="button" className={styles.viewBtn} aria-pressed={view === 'count'} onClick={() => dispatch({ type: 'patch', patch: { view: 'count' } })}>Count</button>
@@ -111,7 +130,7 @@ export default function BurningCalendar() {
           <>
             <span>Hotspots per month</span>
             <span><span className={styles.swatch} style={{ background: '#f0f0f0' }} />0</span>
-            {COUNT_RAMP.map((c, i) => <span key={c}><span className={styles.swatch} style={{ background: c }} />bin {i + 1}</span>)}
+            {COUNT_RAMP.map((c, i) => <span key={c}><span className={styles.swatch} style={{ background: c }} />{binLabels(bins)[i] ?? ''}</span>)}
           </>
         ) : (
           <>
@@ -157,7 +176,7 @@ export default function BurningCalendar() {
                         aria-label={cellLabel(row.year, mi, v, pct, isPartial)}
                         onClick={() => toggleFocus(row.year, mi)}
                       >
-                        {cellText(v, pct, isPartial)}{isPartial ? <span className={styles.soFar}> SO FAR</span> : null}
+                        {cellText(v, pct, isPartial)}{isPartial ? <span className={styles.soFar}>SO FAR</span> : null}
                       </button>
                     </td>
                   );

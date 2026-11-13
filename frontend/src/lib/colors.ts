@@ -33,6 +33,24 @@ export function countColor(value: number, bins: number[]): string {
   return COUNT_RAMP[i] ?? COUNT_RAMP[COUNT_RAMP.length - 1];
 }
 
+export function binLabels(bins: number[]): string[] {
+  // bins are 7 quantile thresholds; produce 7 ranges for the 7 ramp colors
+  const b = bins.map((x) => Math.max(1, Math.round(x)));
+  const labels: string[] = [];
+  let lo = 1;
+  for (let i = 0; i < b.length; i++) {
+    const hi = b[i];
+    if (i === b.length - 1) {
+      labels.push(lo > hi ? `over ${hi.toLocaleString('en-US')}` : `over ${(Math.max(lo - 1, hi)).toLocaleString('en-US')}`);
+    } else {
+      const top = Math.max(lo, hi);
+      labels.push(lo === top ? `${lo.toLocaleString('en-US')}` : `${lo.toLocaleString('en-US')}–${top.toLocaleString('en-US')}`);
+      lo = top + 1;
+    }
+  }
+  return labels;
+}
+
 export const ANOMALY_BINS = [
   { max: -75, color: '#2166ac', label: 'below −75%' },
   { max: -40, color: '#67a9cf', label: '−75 to −40%' },

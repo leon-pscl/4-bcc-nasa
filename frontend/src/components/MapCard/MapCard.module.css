@@ -20,6 +20,7 @@
 .row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: flex-end; }
 .label { display: flex; flex-direction: column; font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .input { width: 104px; height: 44px; padding: 0 var(--s2); border: 1px solid var(--line); border-radius: var(--r-control); font-family: inherit; font-size: 14px; color: var(--ink); background: var(--surface); }
+.input[type="date"] { width: 150px; }
 .size { font-family: var(--font-mono); }
 .sizeLabel { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .sizeValue { font-size: 20px; font-weight: 600; }
