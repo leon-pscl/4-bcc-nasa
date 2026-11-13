@@ -38,7 +38,7 @@ def test_starter_area_oversized():
     try:
         load_regions(p)
     except ValueError as e:
-        assert "too large" in str(e) or "oversized" in str(e)
+        assert "larger than" in str(e)
     else:
         raise AssertionError("expected ValueError")
 

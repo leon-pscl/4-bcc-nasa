@@ -22,12 +22,13 @@ CELLDAYS_COLUMNS: List[str] = [
 
 # C3: calibration
 CALIBRATION_COLUMNS: List[str] = [
-    "tile_id", "month", "k", "modis_celldays", "viirs_celldays", "level",
+    "region", "platform", "reference", "tile_id", "month", "k",
+    "modis_celldays", "viirs_celldays", "level",
 ]
 
 # C4: harmonized (no sensor/platform)
 HARMONIZED_COLUMNS: List[str] = [
-    "cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis",
+    "region", "cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis",
 ]
 
 
@@ -97,13 +98,15 @@ CELLDAYS_DTYPES = {
 }
 
 CALIBRATION_DTYPES = {
+    "region": "string", "platform": "string", "reference": "string",
     "tile_id": "string", "month": "int8", "k": "float64",
     "modis_celldays": "int64", "viirs_celldays": "int64", "level": "string",
 }
 
 HARMONIZED_DTYPES = {
-    "cell_lat_idx": "int32", "cell_lon_idx": "int32", "tile_id": "string",
-    "date_local": "date", "value": "float64", "basis": "string",
+    "region": "string", "cell_lat_idx": "int32", "cell_lon_idx": "int32",
+    "tile_id": "string", "date_local": "date", "value": "float64",
+    "basis": "string",
 }
 
 
@@ -124,9 +127,15 @@ def validate_calibration(df: pd.DataFrame) -> None:
     _check_dtypes(df, {k: v for k, v in CALIBRATION_DTYPES.items() if v != "date"}, "calibration")
 
 
+VALID_BASIS = {"viirs", "viirs_noaa20", "viirs_noaa21", "modis_scaled", "modis_gapfill"}
+
+
 def validate_harmonized(df: pd.DataFrame) -> None:
     _check_columns(df, HARMONIZED_COLUMNS, "harmonized")
-    if "sensor" in df.columns or "platform" in df.columns:
-        raise ValueError("harmonized: must not contain 'sensor' or 'platform' column")
+    if "sensor" in df.columns or "platform" in df.columns or "reference" in df.columns:
+        raise ValueError("harmonized: must not contain 'sensor', 'platform' or 'reference' column")
+    bad = set(df["basis"].dropna().unique()) - VALID_BASIS
+    if bad:
+        raise ValueError(f"harmonized: unknown basis values: {sorted(bad)}")
     _check_dtypes(df, {k: v for k, v in HARMONIZED_DTYPES.items() if v != "date"}, "harmonized")
     _check_date_local(df, "harmonized")

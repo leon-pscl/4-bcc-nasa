@@ -1,9 +1,12 @@
-"""Area selection and validation."""
+"""Area selection and validation (Stage 4).
+
+A cell is inside the area if its **center** is inside. West and south edges are
+inclusive; east and north are exclusive. Point + radius uses haversine distance
+from the cell center.
+"""
 
 import math
 from dataclasses import dataclass
-
-import pandas as pd
 
 
 @dataclass
@@ -18,44 +21,60 @@ class Area:
     grid_deg: float = 0.05
 
     @classmethod
-    def from_bbox(cls, w, s, e, n, grid_deg=0.05):
+    def from_bbox(cls, w, s, e, n, grid_deg=0.05, max_area_km2=500_000):
         a = cls(w=w, s=s, e=e, n=n, grid_deg=grid_deg)
-        a.validate()
+        a.validate(max_area_km2)
         return a
 
     @classmethod
     def from_point(cls, lat, lon, radius_km, grid_deg=0.05):
         a = cls(lat=lat, lon=lon, radius_km=radius_km, grid_deg=grid_deg)
-        a.validate()
+        a.validate(float("inf"))
         return a
 
-    def validate(self):
-        if self.radius_km is None:
-            if not (-180 <= self.w < self.e <= 180):
-                raise ValueError("invalid bbox longitude")
-            if not (-90 <= self.s < self.n <= 90):
-                raise ValueError("invalid bbox latitude")
-        else:
+    def validate(self, max_area_km2):
+        if self.radius_km is not None:
             if not (1 <= self.radius_km <= 500):
                 raise ValueError("radius must be 1..500 km")
+            if not (-90 <= self.lat <= 90 and -180 <= self.lon <= 180):
+                raise ValueError("invalid point")
+            return
+        if not (-180 <= self.w < self.e <= 180):
+            raise ValueError("invalid bbox longitude: west must be left of east within -180..180")
+        if not (-90 <= self.s < self.n <= 90):
+            raise ValueError("invalid bbox latitude")
+        if self.area_km2() > max_area_km2:
+            raise ValueError(f"area larger than the {max_area_km2} km^2 limit")
 
     def area_km2(self):
-        if self.radius_km is None:
-            R = 6371.0
-            to_rad = lambda d: d * math.pi / 180
-            return R * R * (math.sin(to_rad(self.n)) - math.sin(to_rad(self.s))) * to_rad(self.e - self.w)
-        return math.pi * self.radius_km * self.radius_km
-
-    def contains_cell(self, cell_lat_idx, cell_lon_idx):
-        g = self.grid_deg
-        clat = (cell_lat_idx + 0.5) * g
-        clon = (cell_lon_idx + 0.5) * g
-        if self.radius_km is None:
-            return self.w <= clon < self.e and self.s <= clat < self.n
-        # haversine
+        if self.radius_km is not None:
+            return math.pi * self.radius_km * self.radius_km
         R = 6371.0
-        dlat = math.radians(clat - self.lat)
-        dlon = math.radians(clon - self.lon)
-        a = math.sin(dlat/2)**2 + math.cos(math.radians(self.lat))*math.cos(math.radians(clat))*math.sin(dlon/2)**2
-        dist = 2 * R * math.asin(math.sqrt(a))
-        return dist <= self.radius_km
+        to_rad = lambda d: d * math.pi / 180
+        return R * R * (math.sin(to_rad(self.n)) - math.sin(to_rad(self.s))) * to_rad(self.e - self.w)
+
+    def cell_bounds(self, cell_lat_idx, cell_lon_idx):
+        g = self.grid_deg
+        return (cell_lon_idx * g, cell_lat_idx * g, (cell_lon_idx + 1) * g, (cell_lat_idx + 1) * g)
+
+    def cell_inside(self, cell_lat_idx, cell_lon_idx):
+        # west and south edges inclusive; east and north exclusive
+        g = self.grid_deg
+        c_lon = (cell_lon_idx + 0.5) * g
+        c_lat = (cell_lat_idx + 0.5) * g
+        if self.radius_km is not None:
+            R = 6371.0
+            dlat = math.radians(c_lat - self.lat)
+            dlon = math.radians(c_lon - self.lon)
+            a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(self.lat)) * math.cos(
+                math.radians(c_lat)) * math.sin(dlon / 2) ** 2
+            return 2 * R * math.asin(math.sqrt(a)) <= self.radius_km
+        return (self.w <= c_lon < self.e) and (self.s <= c_lat < self.n)
+
+    @staticmethod
+    def bbox_sql(area, grid_deg=None):
+        """WHERE clause filtering cell centers to the area."""
+        g = grid_deg if grid_deg is not None else area.grid_deg
+        if area.radius_km is not None:
+            return f"haversine_distance({area.lat}, {area.lon}, cell_lat_idx*{g}+{g}/2, cell_lon_idx*{g}+{g}/2) <= {area.radius_km}"
+        return f"cell_lon_idx*{g}+{g}/2 >= {area.w} AND cell_lon_idx*{g}+{g}/2 < {area.e} AND cell_lat_idx*{g}+{g}/2 >= {area.s} AND cell_lat_idx*{g}+{g}/2 < {area.n}"

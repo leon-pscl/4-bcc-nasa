@@ -20,9 +20,12 @@ or a contract changes. Newest last.
 | D12 | 2026-11-13 | **Not built yet:** database server, Kubernetes, microservices, job queue, user accounts. | Data is read-only for users and has one writer, the pipeline. If the app outgrows one machine, the data moves to object storage and the API runs as read-only copies: a migration, not a rewrite. |
 | D13 | 2026-11-13 | **ESLint** (with `typescript-eslint` and `jsx-a11y`) as the linter. | It's on the approved list, and no linter was installed after the reset, so `frontend-tasks.md` 6a's ESLint-or-oxlint question no longer applies. |
 
+| D14 | 2026-11-14 | **Shrinkage calibration.** `k_month = (viirs + 30*k_tile)/(aqua + 30)`, `k_tile = (viirs_tile + 30*k_region)/(aqua_tile + 30)` (`SHRINK_M = 30`). | Raw ratios gave tile-month k of 0.53–26.19; marginal months dominated. m=30 gave the best held-out r/bias/MAPE of {0, 30, 100, 300}. The 0.53–26.19 was across all tile-months; per-tile medians ranged 1.56–26.19. |
+| D15 | 2026-11-14 | **NOAA-20/21 continuity after S-NPP ends.** No SNPP on a date -> NOAA-20×k(NOAA-20→SNPP), else NOAA-21×k, else Aqua×k gap fill. New C4 bases `viirs_noaa20` / `viirs_noaa21`. `latest_date` is the last harmonized day. | S-NPP ends 2026-11-02; "this month vs median" would otherwise rest on nothing. Overlap: NOAA-20 k≈1.017, NOAA-21 k≈1.041 (≈1:1). |
+| D16 | 2026-11-14 | **500,000 km² limit stays** (`MAX_AREA_KM2 = 500_000`); the map card shows the warning again. | O1 closed by the owner. Keeps the map under `MAX_MAP_CELLS`; matches the starter-area design. |
+
 ## Open
 
 | ID | Question | Notes |
 |---|---|---|
-| O1 | Keep the 500,000 km² analysis limit? | The backend enforces it, but the current map card no longer shows the warning. Either restore the message or change `MAX_AREA_KM2`. The starter areas were chosen to fit under it. |
 | O2 | The FIRMS key-status URL | The guessed URL returns "Invalid API call". Get the real one from the "view status" link in the MAP_KEY email (Stage S). |

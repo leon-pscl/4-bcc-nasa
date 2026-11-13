@@ -2,8 +2,8 @@ import pandas as pd
 
 from firecal.config import Settings
 from firecal.devdata import generate
-from firecal.harmonize.calibrate import fit_calibration
-from firecal.harmonize.apply import build_harmonized
+from firecal.harmonize.db import fit_calibration
+from firecal.harmonize.db import build_harmonized
 
 
 def test_synthetic_k():
@@ -43,7 +43,7 @@ def test_validation_r():
     cd = generate(settings, "bolivia_east", seed=42)
     cal = fit_calibration(cd, settings)
     harm = build_harmonized(cd, cal, settings)
-    from firecal.harmonize.validate import validate
+    from firecal.harmonize.db import validate
     v = validate(cd, cal, settings, harm)
     for label in ("calibration_years", "validation_years"):
         m = v[label]["metrics"]
@@ -98,7 +98,7 @@ def test_c5_hand_check():
     settings.KEEP_TYPES = (0,)
     cd = generate(settings, "bolivia_east", seed=42)
     cal = fit_calibration(cd, settings)
-    from firecal.harmonize.validate import validate, _lookup_k_series
+    from firecal.harmonize.db import validate
     v = validate(cd, cal, settings)
     # hand compute for one month
     aqua = cd[cd.platform == "Aqua"].copy()
