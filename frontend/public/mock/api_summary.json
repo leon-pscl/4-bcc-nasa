@@ -1,0 +1,9 @@
+{
+  "total": 141,
+  "peak_month": {"year": 2026, "month": 8, "value": 8},
+  "peak_year": {"year": 2025, "value": 78},
+  "current_month": {"year": 2026, "month": 11, "through_day": 12, "value": 11, "median_same_span": 10, "pct_vs_median": 10},
+  "latest_data_date": "2026-11-12",
+  "synthetic": true,
+  "data_version": "2026-11-13T00:00:00Z"
+}

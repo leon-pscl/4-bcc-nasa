@@ -1,0 +1,19 @@
+{
+  "query": {"bbox": [110.7, -3.6, 115.9, 0.8], "start": "2003-01-01", "end": "2026-11-12", "area_km2": 282742},
+  "unit": "Hotspots (harmonized)",
+  "years": [2025, 2026],
+  "values": [[1,2,3,4,5,6,7,8,9,10,11,12],[1,2,3,4,5,6,7,8,9,10,11,null]],
+  "partial": {"year": 2026, "month": 11, "through_day": 12},
+  "monthly_median": [1,2,3,4,5,6,7,8,9,10,11,12],
+  "monthly_p25": [0,1,2,3,4,5,6,7,8,9,10,11],
+  "monthly_p75": [2,3,4,5,6,7,8,9,10,11,12,13],
+  "anomaly": [[0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,null]],
+  "anomaly_pct": [[0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,null]],
+  "annual_totals": [78, 63],
+  "partial_years": [2026],
+  "baseline_years": [2003, 2025],
+  "baseline_warning": null,
+  "coverage_warning": null,
+  "synthetic": true,
+  "data_version": "2026-11-13T00:00:00Z"
+}

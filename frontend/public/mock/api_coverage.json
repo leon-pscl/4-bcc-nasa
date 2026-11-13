@@ -1,0 +1,10 @@
+{
+  "regions": [
+    {"name": "southeast_asia", "label": "Southeast Asia", "bbox": [92.0, -11.0, 141.0, 28.5], "countries": ["Indonesia"], "start": "2003-01-01", "end": "2026-11-12", "platforms": ["Aqua","SNPP"], "latest_date": "2026-11-12", "synthetic": true},
+    {"name": "amazon", "label": "Amazon", "bbox": [-80.0, -20.0, -44.0, 6.0], "countries": ["Brazil"], "start": "2003-01-01", "end": "2026-11-12", "platforms": ["Aqua","SNPP"], "latest_date": "2026-11-12", "synthetic": true}
+  ],
+  "starter_areas": [
+    {"name": "central_kalimantan", "label": "Central Kalimantan", "region": "southeast_asia", "bbox": [110.7, -3.6, 115.9, 0.8]}
+  ],
+  "data_version": "2026-11-13T00:00:00Z"
+}
