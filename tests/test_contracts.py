@@ -76,3 +76,71 @@ def test_sensor_column_in_c4_fails():
         assert "sensor" in str(e)
     else:
         raise AssertionError("expected ValueError")
+
+
+def _good_celldays():
+    return pd.DataFrame({
+        "cell_lat_idx": pd.array([1], dtype="int32"),
+        "cell_lon_idx": pd.array([2], dtype="int32"),
+        "tile_id": pd.array(["0_0"], dtype="string"),
+        "date_local": [pd.Timestamp("2024-01-01").date()],
+        "platform": pd.array(["Aqua"], dtype="string"),
+        "n_detections": pd.array([3], dtype="int32"),
+        "frp_sum": [1.5],
+    })
+
+
+def test_good_celldays_passes():
+    from firecal.contracts import validate_celldays
+    validate_celldays(_good_celldays())
+
+
+def test_celldays_missing_column_fails():
+    from firecal.contracts import validate_celldays
+    df = _good_celldays().drop(columns=["tile_id"])
+    try:
+        validate_celldays(df)
+    except ValueError as e:
+        assert "missing columns" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def _good_calibration():
+    return pd.DataFrame({
+        "tile_id": pd.array(["0_0"], dtype="string"),
+        "month": pd.array([1], dtype="int8"),
+        "k": [1.5],
+        "modis_celldays": [10],
+        "viirs_celldays": [15],
+        "level": pd.array(["tile_month"], dtype="string"),
+    })
+
+
+def test_good_calibration_passes():
+    from firecal.contracts import validate_calibration
+    validate_calibration(_good_calibration())
+
+
+def test_calibration_wrong_dtype_fails():
+    from firecal.contracts import validate_calibration
+    df = _good_calibration().copy()
+    df["month"] = df["month"].astype("int64")
+    try:
+        validate_calibration(df)
+    except ValueError as e:
+        assert "month" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_date_local_must_be_date():
+    from firecal.contracts import validate_celldays
+    df = _good_celldays().copy()
+    df["date_local"] = ["not-a-date"]
+    try:
+        validate_celldays(df)
+    except ValueError as e:
+        assert "date_local" in str(e)
+    else:
+        raise AssertionError("expected ValueError")

@@ -5,16 +5,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-def _load_env(path: Path) -> None:
-    """Tiny .env loader (no extra dependency)."""
+def _read_env(path: Path) -> dict:
+    """Read a .env file into a dict (no mutation of os.environ)."""
+    result = {}
     if not path.exists():
-        return
+        return result
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+        result[key.strip()] = value.strip()
+    return result
 
 
 @dataclass
@@ -43,22 +45,23 @@ class Settings:
         "MODIS": ("MODIS_SP", "MODIS_NRT"),
         "VIIRS": ("VIIRS_SNPP_SP", "VIIRS_SNPP_NRT"),
     })
-    FIRMS_DAY_RANGE_MAX: int = 10
+    FIRMS_DAY_RANGE_MAX: int = 5
     FIRMS_TX_BUDGET: int = 4000
     FIRMS_TX_WINDOW: int = 600
     FIRMS_RETRIES: int = 5
+    FIRMS_BACKOFF_BASE_S: int = 5
     NRT_REFRESH_DAYS: int = 7
     VIIRS_SP_START: str = "2012-01-20"
 
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"
-    FIRMS_MAP_KEY: str = ""
+    FIRMS_MAP_KEY: str = field(default="", repr=False)
 
     @classmethod
     def from_env(cls, env_path: str = ".env") -> "Settings":
-        _load_env(Path(env_path))
+        file_values = _read_env(Path(env_path))
         s = cls()
-        s.DATA_RAW = os.environ.get("DATA_RAW", s.DATA_RAW)
-        s.DATA_PROCESSED = os.environ.get("DATA_PROCESSED", s.DATA_PROCESSED)
-        s.FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", s.FIRMS_MAP_KEY)
+        s.DATA_RAW = os.environ.get("DATA_RAW", file_values.get("DATA_RAW", s.DATA_RAW))
+        s.DATA_PROCESSED = os.environ.get("DATA_PROCESSED", file_values.get("DATA_PROCESSED", s.DATA_PROCESSED))
+        s.FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", file_values.get("FIRMS_MAP_KEY", s.FIRMS_MAP_KEY))
         return s

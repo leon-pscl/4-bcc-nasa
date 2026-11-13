@@ -131,10 +131,10 @@ With no date at the end of the URL, this returns only **the last 5 days**. The c
 
 - Use the **standard processing sources** (`MODIS_SP`, `VIIRS_SNPP_SP`) for history.
 - Add the optional date: `/api/area/csv/KEY/SOURCE/W,S,E,N/DAY_RANGE/YYYY-MM-DD` returns
-  `DATE .. DATE + DAY_RANGE - 1`, and `DAY_RANGE` is **1 to 10**.
+  `DATE .. DATE + DAY_RANGE - 1`, and `DAY_RANGE` is **1 to 5** (FIRMS rejects 6-10).
 - Use the NRT sources only for recent days that standard processing doesn't cover yet. Check
   where each source starts and ends with `/api/data_availability/`.
-- Loop over 10-day chunks, stay under the transaction limit, cache every response and resume
+- Loop over 5-day chunks, stay under the transaction limit, cache every response and resume
   after interruptions.
 
 **In the app, the map's box never triggers a FIRMS download.** Fetching runs offline, once
@@ -340,7 +340,7 @@ in one place.
 | `REGIONS` | `{"bolivia_east": (-64, -18, -60, -14), "luzon_example": (121.116028, 14.583583, 121.643372, 15.445738)}` | Demo regions (W, S, E, N). `luzon_example` is the box from the team's data-access guide |
 | `FIRMS_BASE_URL` | `https://firms.modaps.eosdis.nasa.gov` | |
 | `FIRMS_SOURCES` | MODIS: `MODIS_SP` / `MODIS_NRT`; VIIRS: `VIIRS_SNPP_SP` / `VIIRS_SNPP_NRT` | SP for history, NRT only after SP ends |
-| `FIRMS_DAY_RANGE_MAX` | `10` | API limit per request |
+| `FIRMS_DAY_RANGE_MAX` | `5` | API limit per request |
 | `FIRMS_TX_BUDGET` | `4000` per `600` s | Stays below the 5,000 per 10 minutes key limit. Count each requested day as one transaction (worst case; FIRMS says multi-day requests may count as several) |
 | `FIRMS_RETRIES` | `5`, exponential backoff from 5 s | FIRMS sometimes returns 504s |
 | `NRT_REFRESH_DAYS` | `7` | NRT chunks ending within this many days of today are always fetched again, because NRT data keeps changing |
