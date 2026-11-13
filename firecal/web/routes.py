@@ -43,9 +43,10 @@ def _cache_key(args, dv):
     return (tuple(sorted(args.items())), dv)
 
 
-def create_app(settings=None):
+def create_app(settings=None, dist_dir=None):
     _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    dist_dir = os.path.join(_repo_root, "frontend", "dist")
+    if dist_dir is None:
+        dist_dir = os.path.join(_repo_root, "frontend", "dist")
     if settings is None:
         from firecal.config import Settings
         settings = Settings.from_env()
