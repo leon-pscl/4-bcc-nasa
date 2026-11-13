@@ -34,8 +34,13 @@ def main():
             print("no files")
             sys.exit(1)
         new_df = pd.concat(frames, ignore_index=True)
-        merge_into_store(new_df, store_path)
-        print(f"ingested {len(new_df)} rows")
+        old_count = 0
+        if os.path.exists(store_path):
+            old_count = len(pd.read_parquet(store_path))
+        merged = merge_into_store(new_df, store_path)
+        added = len(merged) - old_count
+        dropped = len(new_df) - added
+        print(f"rows read: {len(new_df)}, rows added: {added}, duplicates dropped: {dropped}")
         return
 
     # ingest from manifest
@@ -47,6 +52,9 @@ def main():
     if args.region:
         bbox = settings.REGIONS[args.region]
     elif args.bbox:
+        if not args.name:
+            print("--name required with --bbox")
+            sys.exit(1)
         bbox = tuple(float(x) for x in args.bbox.split(","))
     else:
         print("need --region or --bbox or files")
@@ -59,6 +67,9 @@ def main():
         print("no matching manifest entries")
         sys.exit(1)
     new_df = pd.concat(frames, ignore_index=True)
+    old_count = 0
+    if os.path.exists(store_path):
+        old_count = len(pd.read_parquet(store_path))
     dates = [e["date"] for e in matching]
     # expand to actual chunk dates? use manifest date only (start of chunk); approximate
     all_dates = []
@@ -80,8 +91,10 @@ def main():
         "latest_date": end,
         "synthetic": False,
     }
-    merge_into_store(new_df, store_path, coverage_path=coverage_path, coverage_entry=entry)
-    print(f"ingested {len(new_df)} rows")
+    merged = merge_into_store(new_df, store_path, coverage_path=coverage_path, coverage_entry=entry)
+    added = len(merged) - old_count
+    dropped = len(new_df) - added
+    print(f"rows read: {len(new_df)}, rows added: {added}, duplicates dropped: {dropped}")
 
 
 if __name__ == "__main__":

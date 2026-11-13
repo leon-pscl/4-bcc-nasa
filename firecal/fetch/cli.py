@@ -136,12 +136,11 @@ def cmd_backfill(args, settings, client=None):
     if args.dry_run:
         return
 
-    # key status before long run
+    # key status before long run (best-effort; unknown URL must not block fetches)
     try:
         client.key_status()
     except FirmsError as exc:
-        print("error:", exc)
-        sys.exit(1)
+        print("warning: key_status unavailable:", exc)
 
     rl = RateLimiter(settings.FIRMS_TX_BUDGET, settings.FIRMS_TX_WINDOW)
     for i, c in enumerate(chunks):
@@ -149,8 +148,7 @@ def cmd_backfill(args, settings, client=None):
             try:
                 client.key_status()
             except FirmsError as exc:
-                print("error:", exc)
-                sys.exit(1)
+                print("warning: key_status unavailable:", exc)
         rl.acquire(c.day_range)
         try:
             text = client.area_csv(c.source, c.bbox, c.day_range, c.date)
