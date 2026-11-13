@@ -38,7 +38,7 @@ def _lookup_k_series(cal, cd):
         for dd in lookup.values():
             if dd:
                 return list(dd.values())[0]
-        return 1.0
+        raise ValueError("no calibration factor found")
 
     out = cd.copy()
     months = pd.to_datetime(out["date_local"]).dt.month
