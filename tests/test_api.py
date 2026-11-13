@@ -283,14 +283,17 @@ def test_calendar_304_then_data_change(client, env):
     assert r.headers["ETag"] == '"dv2"'
 
 
-def test_health_stale_with_injected_clock(client, env):
-    cov_path = os.path.join(env.DATA_PROCESSED, "coverage.json")
-    cov = json.load(open(cov_path))
-    for e in cov:
-        e["latest_date"] = "2020-01-01"
-    json.dump(cov, open(cov_path, "w"))
+def test_health_stale_with_injected_clock(client, env, monkeypatch):
+    # inject a clock 100+ days after the fixture's latest data date -> stale
+    monkeypatch.setenv("FIRECAL_TODAY", "2026-12-31")
     r = client.get("/health")
-    assert r.get_json()["status"] == "stale"
+    body = r.get_json()
+    assert body["status"] == "stale"
+    assert body["regions"][0]["age_days"] == (date(2026, 12, 31) - date(2026, 9, 21)).days
+    # clock inside 3 days of the data -> fresh again
+    monkeypatch.setenv("FIRECAL_TODAY", "2026-09-22")
+    r = client.get("/health")
+    assert r.get_json()["status"] == "ok"
 
 
 def test_calendar_under_50kb(client):
