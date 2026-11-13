@@ -1,0 +1,1 @@
+"""Stage 1b: ingest FIRMS CSV into detections."""

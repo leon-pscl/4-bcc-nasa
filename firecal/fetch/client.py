@@ -47,6 +47,8 @@ class FirmsClient:
                 raise FirmsError(_mask(str(exc), self.map_key)) from None
             status = getattr(resp, "status_code", 200)
             text = getattr(resp, "text", "")
+            if status >= 400 and status < 500:
+                raise FirmsError(_mask(text[:200], self.map_key)) from None
             if status >= 500:
                 last_exc = FirmsError(_mask(text[:200], self.map_key))
                 if attempt < self.retries:
