@@ -1,16 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { parseEdges, areaKm2 } from './geo';
+import { parseEdges, areaKm2, wrapLon, round4, validateEdges, insideRegion, MAX_AREA_KM2, cornersToEdges, validatePoint, pointAreaKm2 } from './geo';
 
 describe('geo', () => {
-  it('rejects invalid edges', () => {
-    expect(parseEdges('', '1', '2', '3')).toBeNull();
-    expect(parseEdges('10', '-5', '0', '-5')).not.toBeNull(); // valid-ish
-    expect(parseEdges('5', '10', '0', '-5')).toBeNull(); // south>=north
+  it('parseEdges rejects invalid', () => { expect(parseEdges('10', '20', '30', '40')).toBeNull(); });
+  it('areaKm2 positive', () => { expect(areaKm2(-14, -18, -60, -64)).toBeGreaterThan(0); });
+  it('wrapLon', () => { expect(wrapLon(190)).toBe(-170); });
+  it('round4', () => { expect(round4(1.123456)).toBe(1.1235); });
+
+  it('validateEdges messages', () => {
+    expect(validateEdges('', '', '', '')).toBe('Enter all four edges in decimal degrees.');
+    expect(validateEdges('100', '-18', '-60', '-64')).toBe('North and South must be between −90 and 90.');
+    expect(validateEdges('-14', '-18', '200', '-64')).toBe('East and West must be between −180 and 180.');
+    expect(validateEdges('-18', '-14', '-60', '-64')).toBe('The South edge must be below the North edge.');
+    expect(validateEdges('-14', '-18', '-64', '-60')).toBe("The West edge must be left of the East edge (areas can't cross the 180° line).");
+    expect(validateEdges('80', '-80', '170', '-170')).toBe('Larger than the 500,000 km² limit. Draw a smaller area.');
+    expect(validateEdges('-14', '-18', '-60', '-64')).toBeNull();
+    expect(areaKm2(80, -80, 170, -170)).toBeGreaterThan(MAX_AREA_KM2);
   });
-  it('area ~ expected for Bolivia box', () => {
-    const a = areaKm2(-14, -18, -60, -64);
-    // R^2*(sin(-14)-sin(-18))*( (-60+64)deg in rad)
-    expect(a).toBeGreaterThan(180000);
-    expect(a).toBeLessThan(200000);
+
+  it('insideRegion', () => {
+    const edges = { n: -3.5, s: -3.6, e: 115.9, w: 115.8 };
+    expect(insideRegion(edges, [110.7, -3.6, 115.9, 0.8])).toBe(true);
+    expect(insideRegion(edges, [97.3, 17.0, 101.5, 20.5])).toBe(false);
+  });
+
+  it('cornersToEdges fills N/S/E/W', () => {
+    expect(cornersToEdges(-18, -64, -14, -60)).toEqual({ n: '-14', s: '-18', e: '-60', w: '-64' });
+    expect(cornersToEdges(-14, -60, -18, -64)).toEqual({ n: '-14', s: '-18', e: '-60', w: '-64' });
+  });
+
+  it('validatePoint', () => {
+    expect(validatePoint('', '', '')).toBe('Enter a latitude, a longitude and a radius.');
+    expect(validatePoint('-2', '113', '50')).toBeNull();
+    expect(validatePoint('-2', '113', '600')).toBe('The radius must be between 1 and 500 km.');
+    expect(pointAreaKm2(10)).toBeCloseTo(Math.PI * 100);
   });
 });

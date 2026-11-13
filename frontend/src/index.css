@@ -1,3 +1,20 @@
+:root {
+  --ink: #0f0f0f;
+  --paper: #fafafa;
+  --surface: #ffffff;
+  --line: #959596;
+  --muted: #6b6b6d;
+  --fill: #f0f0f0;
+  --danger: #b2182b;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --r-control: 4px;
+  --r-card: 6px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: #fafafa; color: #0f0f0f; font-family: system-ui, sans-serif; font-size: 14px; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.45; }
+h1, h2, h3 { font-family: var(--font-mono); }
+button, input, select { font-family: var(--font-sans); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }

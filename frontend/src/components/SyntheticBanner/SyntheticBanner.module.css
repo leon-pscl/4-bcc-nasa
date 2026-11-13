@@ -1,0 +1,2 @@
+.banner { background: var(--ink); color: #fff; font-size: 13px; padding: 9px 32px; }
+.label { font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.08em; }
