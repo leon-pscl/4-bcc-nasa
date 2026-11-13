@@ -47,29 +47,28 @@ export const MapResponseSchema = z.object({
   grid_deg: z.number(),
   aggregated_to: z.number().nullable(),
   cells: z.array(MapCellSchema),
-  data_version: z.string().optional(),
+  data_version: z.string(),
 });
 
 export const HotspotRowSchema = z.object({
   date_local: z.string(),
-  acq_time_utc: z.string().optional(),
-  time_utc: z.string().optional(),
+  acq_datetime_utc: z.string(),
   latitude: z.number(),
   longitude: z.number(),
-  confidence: z.string(),
+  confidence_class: z.string(),
   frp: z.number(),
   daynight: z.string(),
   sensor: z.string().optional(),
   platform: z.string().optional(),
   processing: z.string().optional(),
-}).passthrough();
+});
 
 export const HotspotsResponseSchema = z.object({
   page: z.number(),
   page_size: z.number(),
   total: z.number(),
   rows: z.array(HotspotRowSchema),
-  data_version: z.string().optional(),
+  data_version: z.string(),
 });
 
 export const CoverageRegionSchema = z.object({
@@ -97,19 +96,27 @@ export const CoverageResponseSchema = z.object({
   data_version: z.string(),
 });
 
+const MetricsSchema = z.object({
+  pearson_r: z.number(),
+  bias_pct: z.number(),
+  median_abs_pct_error: z.number(),
+  monthly_viirs: z.array(z.number()),
+  monthly_modis: z.array(z.number()),
+});
+
 export const MethodsResponseSchema = z.object({
   region: z.string(),
   calibration: z.object({
     k_median: z.number(),
     k_min: z.number(),
     k_max: z.number(),
-    count_per_level: z.record(z.number()),
-  }).passthrough(),
+    count_per_level: z.record(z.string(), z.number()),
+  }),
   validation: z.object({
-    calibration_years: z.object({ years: z.array(z.number()), metrics: z.any() }),
-    validation_years: z.object({ years: z.array(z.number()), metrics: z.any() }),
-  }).passthrough(),
-  data_version: z.string().optional(),
+    calibration_years: z.object({ years: z.array(z.number()), metrics: MetricsSchema }),
+    validation_years: z.object({ years: z.array(z.number()), metrics: MetricsSchema }),
+  }),
+  data_version: z.string(),
 });
 
 export const ApiErrorSchema = z.object({ error: z.string(), field: z.string().optional() });

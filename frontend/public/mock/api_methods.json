@@ -2,8 +2,8 @@
   "region": "southeast_asia",
   "calibration": {"k_median": 2.5, "k_min": 1.0, "k_max": 4.0, "count_per_level": {"tile_month": 10, "tile": 5, "all_month": 2, "all": 1}},
   "validation": {
-    "calibration_years": {"years": [2013,2017], "metrics": {}},
-    "validation_years": {"years": [2018,2021], "metrics": {"pearson_r": 0.9, "bias_pct": 5.0, "median_abs_pct_error": 10.0, "monthly_viirs": [1,2], "monthly_modis": [1,2]}}
+    "calibration_years": {"years": [2013,2017], "metrics": {"pearson_r": 0.95, "bias_pct": 2.0, "median_abs_pct_error": 8.0, "monthly_viirs": [1,2,3], "monthly_modis": [1,2,3]}},
+    "validation_years": {"years": [2018,2021], "metrics": {"pearson_r": 0.9, "bias_pct": 5.0, "median_abs_pct_error": 10.0, "monthly_viirs": [1,2,3], "monthly_modis": [1,2,3]}}
   },
   "data_version": "2026-11-13T00:00:00Z"
 }

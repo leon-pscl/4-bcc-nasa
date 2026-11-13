@@ -1,13 +1,19 @@
 export const COUNT_RAMP = ['#ffffb2', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#b10026'];
 
+function relLum(hex: string): number {
+  const v = hex.replace('#', '');
+  const ch = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
 export function textOn(bg: string): string {
-  // returns --ink or white based on contrast
-  const hex = bg.replace('#', '');
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.55 ? '#0f0f0f' : '#ffffff';
+  const l = relLum(bg);
+  const ink = relLum('#0f0f0f');
+  const white = 1;
+  const cInk = (Math.max(l, ink) + 0.05) / (Math.min(l, ink) + 0.05);
+  const cWhite = (Math.max(l, white) + 0.05) / (Math.min(l, white) + 0.05);
+  return cWhite >= cInk ? '#ffffff' : '#0f0f0f';
 }
 
 export function quantileBins(values: number[], bins = 7): number[] {

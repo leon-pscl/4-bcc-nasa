@@ -1,9 +1,12 @@
 import AppHeader from './components/AppHeader/AppHeader';
 import SyntheticBanner from './components/SyntheticBanner/SyntheticBanner';
 import MapCard from './components/MapCard/MapCard';
+import { useAppState } from './state/useAppState';
 import './index.css';
 
 export default function App() {
+  const { state } = useAppState();
+  if (!state) return null;
   return (
     <main style={{ maxWidth: 1440, margin: '0 auto', padding: '24px 32px', background: 'var(--paper)' }}>
       <AppHeader />

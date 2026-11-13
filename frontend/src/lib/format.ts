@@ -5,8 +5,9 @@ export function formatNumber(n: number): string {
 }
 
 export function formatSignedPct(n: number): string {
-  const sign = n > 0 ? '+' : '';
-  return `${sign}${n.toFixed(0)}%`;
+  if (n > 0) return `+${n.toFixed(0)}%`;
+  if (n < 0) return `\u2212${Math.abs(n).toFixed(0)}%`;
+  return '0%';
 }
 
 export function formatDate(d: string | Date): string {
