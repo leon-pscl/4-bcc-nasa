@@ -1,0 +1,1 @@
+"""Stage 1a: fetch FIRMS area CSVs and cache them."""
