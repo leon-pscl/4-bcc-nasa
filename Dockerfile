@@ -6,13 +6,8 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: python runtime
-FROM python:3.12-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY firecal/ firecal/
-COPY app.py .
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
-EXPOSE 8000
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+# Stage 2: serve static
+FROM nginx:alpine
+COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

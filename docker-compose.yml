@@ -2,16 +2,4 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
-    env_file: .env
-    volumes:
-      - ./data:/app/data
-  updater:
-    build: .
-    env_file: .env
-    volumes:
-      - ./data:/app/data
-    command: >
-      sh -c "while true; do python -m firecal.pipeline update --all || true; sleep 86400; done"
-    depends_on:
-      - web
+      - "8080:80"

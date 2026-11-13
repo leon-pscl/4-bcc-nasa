@@ -1,6 +1,22 @@
 .git
-.venv
+.gitignore
+.dockerignore
+
+# environment
+.env
+.env.*
+
+# dependencies / build outputs (rebuilt in image)
+node_modules
 frontend/node_modules
 frontend/dist
-data
-.env
+frontend/*.tsbuildinfo
+frontend/.vite
+
+# docs not needed for build
+docs
+
+# editors / agents
+.claude
+.vscode
+.idea
