@@ -8,7 +8,7 @@ import pandas as pd
 from firecal.contracts import validate_detections
 
 
-def merge_into_store(new_df, store_path, coverage_path=None):
+def merge_into_store(new_df, store_path, coverage_path=None, coverage_entry=None):
     validate_detections(new_df)
     if os.path.exists(store_path):
         old = pd.read_parquet(store_path)
@@ -17,10 +17,8 @@ def merge_into_store(new_df, store_path, coverage_path=None):
     else:
         combined = new_df.copy()
 
-    # For each (platform, UTC date) with any SP rows, drop that day's NRT rows.
-    if "acq_datetime_utc" in combined.columns:
+    if "acq_datetime_utc" in combined.columns and len(combined):
         combined["_udate"] = combined["acq_datetime_utc"].dt.date
-        # identify SP keys
         sp_keys = set(
             zip(
                 combined.loc[combined["processing"] == "SP", "platform"],
@@ -34,16 +32,38 @@ def merge_into_store(new_df, store_path, coverage_path=None):
         combined = combined[~mask_nrt_drop].copy()
         combined = combined.drop(columns=["_udate"])
 
-    # dedup by uid
     combined = combined.drop_duplicates(subset=["uid"])
 
     validate_detections(combined)
-    # atomic write
     tmp = store_path + ".tmp"
     combined.to_parquet(tmp, index=False)
     os.replace(tmp, store_path)
 
-    # update coverage.json (simple: record requested area? caller provides)
-    if coverage_path:
-        pass
+    if coverage_path and coverage_entry:
+        _update_coverage(coverage_path, coverage_entry)
     return combined
+
+
+def _update_coverage(coverage_path, entry):
+    if os.path.exists(coverage_path):
+        try:
+            data = json.load(open(coverage_path))
+        except Exception:
+            data = []
+    else:
+        data = []
+    # update existing entry by name
+    out = []
+    replaced = False
+    for e in data:
+        if e.get("name") == entry.get("name"):
+            out.append(entry)
+            replaced = True
+        else:
+            out.append(e)
+    if not replaced:
+        out.append(entry)
+    tmp = coverage_path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(out, f, indent=2)
+    os.replace(tmp, coverage_path)

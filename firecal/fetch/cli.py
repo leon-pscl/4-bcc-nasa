@@ -95,7 +95,7 @@ def cmd_status(args, settings):
         print(f"{src}: {mn} to {mx}")
 
 
-def cmd_backfill(args, settings):
+def cmd_backfill(args, settings, client=None):
     if args.region:
         bbox = _region_bbox(settings, args.region)
     else:
@@ -107,7 +107,8 @@ def cmd_backfill(args, settings):
         end = date.today().isoformat()
     today = date.today().isoformat()
 
-    client = FirmsClient(settings.FIRMS_MAP_KEY, settings.FIRMS_BASE_URL)
+    if client is None:
+        client = FirmsClient(settings.FIRMS_MAP_KEY, settings.FIRMS_BASE_URL)
     if not settings.FIRMS_MAP_KEY:
         print("Missing FIRMS_MAP_KEY. Sign up at https://firms.modaps.eosdis.nasa.gov/api/map_key/")
         sys.exit(1)

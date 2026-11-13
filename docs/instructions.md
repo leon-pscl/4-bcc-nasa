@@ -134,7 +134,7 @@ With no date at the end of the URL, this returns only **the last 5 days**. The c
   `DATE .. DATE + DAY_RANGE - 1`, and `DAY_RANGE` is **1 to 5** (FIRMS rejects 6-10).
 - Use the NRT sources only for recent days that standard processing doesn't cover yet. Check
   where each source starts and ends with `/api/data_availability/`.
-- Loop over 10-day chunks, stay under the transaction limit, cache every response and resume
+- Loop over 5-day chunks, stay under the transaction limit, cache every response and resume
   after interruptions.
 
 **In the app, the map's box never triggers a FIRMS download.** Fetching runs offline, once

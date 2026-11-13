@@ -35,7 +35,8 @@ def test_client_accepts_header_only():
 def test_client_retries_504():
     calls = {"n": 0}
     def transport(url, timeout=120):
-        calls["n"] += 1
+        if "area/csv" in url:
+            calls["n"] += 1
         class R:
             status_code = 200 if calls["n"] > 1 else 504
             text = "latitude,longitude,acq_date\n" if calls["n"] > 1 else "gateway timeout"
@@ -48,7 +49,8 @@ def test_client_retries_504():
 def test_client_does_not_retry_invalid_key():
     calls = {"n": 0}
     def transport(url, timeout=120):
-        calls["n"] += 1
+        if "area/csv" in url:
+            calls["n"] += 1
         class R:
             status_code = 200
             text = "Invalid MAP_KEY"
@@ -127,24 +129,91 @@ def test_plan_nrt_start():
 def test_resume(tmp_path):
     calls = {"n": 0}
     def transport(url, timeout=120):
-        calls["n"] += 1
-        # fail on 3rd request
+        if "area/csv" in url:
+            calls["n"] += 1
+        if "data_availability" in url:
+            class R:
+                status_code = 200
+                text = "data_id,min_date,max_date\nMODIS_SP,2000-11-01,2026-08-31\n"
+            return R()
         if calls["n"] == 3:
             raise TimeoutError("boom")
         class R:
             status_code = 200
             text = "latitude,longitude,acq_date\n"
         return R()
-    # run 1 fails
     from firecal.fetch.cli import cmd_backfill
     import argparse
     settings = Settings()
     settings.DATA_RAW = str(tmp_path / "raw")
     settings.FIRMS_MAP_KEY = "KEY"
+    settings.FIRMS_DAY_RANGE_MAX = 2
+    client = FirmsClient("KEY", settings.FIRMS_BASE_URL, transport=transport, retries=0, backoff_base=0)
     ns = argparse.Namespace(region=None, bbox="121.1,14.5,121.6,15.4", name="x",
-                            start="2024-01-01", end="2024-01-10", dry_run=False)
-    # monkeypatch transport by env not possible; skip real resume network test here
-    assert True
+                            start="2024-01-01", end="2024-01-04", dry_run=False)
+    try:
+        cmd_backfill(ns, settings, client=client)
+    except SystemExit:
+        pass
+    # second run: should fetch remaining (fewer requests)
+    calls2 = {"n": calls["n"]}
+    def transport2(url, timeout=120):
+        if "area/csv" in url:
+            calls2["n"] += 1
+        if "data_availability" in url:
+            class R:
+                status_code = 200
+                text = "data_id,min_date,max_date\nMODIS_SP,2000-11-01,2026-08-31\n"
+            return R()
+        class R:
+            status_code = 200
+            text = "latitude,longitude,acq_date\n"
+        return R()
+    client2 = FirmsClient("KEY", settings.FIRMS_BASE_URL, transport=transport2, retries=0, backoff_base=0)
+    cmd_backfill(ns, settings, client=client2)
+    # third run: zero requests
+    calls3 = {"n": 0}
+    def transport3(url, timeout=120):
+        if "area/csv" in url:
+            calls3["n"] += 1
+        if "data_availability" in url:
+            class R:
+                status_code = 200
+                text = "data_id,min_date,max_date\nMODIS_SP,2000-11-01,2026-08-31\n"
+            return R()
+        class R:
+            status_code = 200
+            text = "latitude,longitude,acq_date\n"
+        return R()
+    client3 = FirmsClient("KEY", settings.FIRMS_BASE_URL, transport=transport3, retries=0, backoff_base=0)
+    cmd_backfill(ns, settings, client=client3)
+    assert calls3["n"] == 0
+
+
+def test_dry_run_no_requests(tmp_path):
+    calls = {"n": 0}
+    def transport(url, timeout=120):
+        if "area/csv" in url:
+            calls["n"] += 1
+        if "data_availability" in url:
+            class R:
+                status_code = 200
+                text = "data_id,min_date,max_date\nMODIS_SP,2000-11-01,2026-08-31\n"
+            return R()
+        class R:
+            status_code = 200
+            text = "latitude,longitude,acq_date\n"
+        return R()
+    from firecal.fetch.cli import cmd_backfill
+    import argparse
+    settings = Settings()
+    settings.DATA_RAW = str(tmp_path / "raw")
+    settings.FIRMS_MAP_KEY = "KEY"
+    client = FirmsClient("KEY", settings.FIRMS_BASE_URL, transport=transport, retries=0, backoff_base=0)
+    ns = argparse.Namespace(region=None, bbox="121.1,14.5,121.6,15.4", name="x",
+                            start="2024-01-01", end="2024-01-04", dry_run=True)
+    cmd_backfill(ns, settings, client=client)
+    assert calls["n"] == 0
 
 
 def test_key_absent_from_traceback():

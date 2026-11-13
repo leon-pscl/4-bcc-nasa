@@ -36,6 +36,34 @@ def _confidence_class(sensor, raw):
 
 def read_firms_csv(path):
     df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    if len(df) == 0:
+        # header-only: return empty C1 frame with correct dtypes
+        sensor = "VIIRS" if "bright_ti4" in df.columns else "MODIS"
+        empty = pd.DataFrame(columns=[
+            "uid", "sensor", "platform", "processing", "latitude", "longitude",
+            "acq_datetime_utc", "date_local", "daynight", "confidence_raw",
+            "confidence_class", "frp", "scan", "track", "brightness", "bright_t31",
+            "type", "version", "source_file",
+        ])
+        empty["sensor"] = empty["sensor"].astype("string")
+        empty["platform"] = empty["platform"].astype("string")
+        empty["processing"] = empty["processing"].astype("string")
+        empty["latitude"] = empty["latitude"].astype("float64")
+        empty["longitude"] = empty["longitude"].astype("float64")
+        empty["acq_datetime_utc"] = pd.to_datetime(empty["acq_datetime_utc"])
+        empty["daynight"] = empty["daynight"].astype("string")
+        empty["confidence_raw"] = empty["confidence_raw"].astype("string")
+        empty["confidence_class"] = empty["confidence_class"].astype("string")
+        empty["frp"] = empty["frp"].astype("float64")
+        empty["scan"] = empty["scan"].astype("float64")
+        empty["track"] = empty["track"].astype("float64")
+        empty["brightness"] = empty["brightness"].astype("float64")
+        empty["bright_t31"] = empty["bright_t31"].astype("float64")
+        empty["type"] = empty["type"].astype("Int8")
+        empty["version"] = empty["version"].astype("string")
+        empty["source_file"] = empty["source_file"].astype("string")
+        empty["uid"] = empty["uid"].astype("string")
+        return empty
     if "bright_ti4" in df.columns:
         sensor = "VIIRS"
         df = df.rename(columns={"bright_ti4": "brightness", "bright_ti5": "bright_t31"})
@@ -97,18 +125,18 @@ def read_firms_csv(path):
         "sensor": sensor,
         "platform": platforms.astype(str),
         "processing": processing.astype(str),
-        "latitude": pd.to_numeric(df["latitude"], errors="coerce"),
-        "longitude": pd.to_numeric(df["longitude"], errors="coerce"),
+        "latitude": pd.to_numeric(df["latitude"], errors="coerce").astype("float64"),
+        "longitude": pd.to_numeric(df["longitude"], errors="coerce").astype("float64"),
         "acq_datetime_utc": pd.to_datetime(acq_utc),
         "date_local": date_local,
         "daynight": df["daynight"].astype(str).str.strip().str.upper(),
         "confidence_raw": confidence_raw.astype(str),
         "confidence_class": confidence_class,
-        "frp": pd.to_numeric(df["frp"], errors="coerce"),
-        "scan": pd.to_numeric(df["scan"], errors="coerce"),
-        "track": pd.to_numeric(df["track"], errors="coerce"),
-        "brightness": pd.to_numeric(df["brightness"], errors="coerce"),
-        "bright_t31": pd.to_numeric(df["bright_t31"], errors="coerce"),
+        "frp": pd.to_numeric(df["frp"], errors="coerce").astype("float64"),
+        "scan": pd.to_numeric(df["scan"], errors="coerce").astype("float64"),
+        "track": pd.to_numeric(df["track"], errors="coerce").astype("float64"),
+        "brightness": pd.to_numeric(df["brightness"], errors="coerce").astype("float64"),
+        "bright_t31": pd.to_numeric(df["bright_t31"], errors="coerce").astype("float64"),
         "type": type_series,
         "version": df["version"].astype(str).str.strip(),
         "source_file": str(path),
@@ -116,7 +144,7 @@ def read_firms_csv(path):
 
     # uid hash
     def make_uid(row):
-        base = f"{row['sensor']}|{row['latitude']}|{row['longitude']}|{row['acq_datetime_utc']}"
+        base = f"{row['platform']}|{row['latitude']}|{row['longitude']}|{row['acq_datetime_utc']}"
         return hashlib.sha256(base.encode()).hexdigest()
 
     out["uid"] = out.apply(make_uid, axis=1)
