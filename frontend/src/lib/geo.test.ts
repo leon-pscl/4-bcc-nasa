@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseEdges, areaKm2, wrapLon, round4, validateEdges, insideRegion, MAX_AREA_KM2 } from './geo';
+import { parseEdges, areaKm2, wrapLon, round4, validateEdges, insideRegion, MAX_AREA_KM2, cornersToEdges, validatePoint, pointAreaKm2 } from './geo';
 
 describe('geo', () => {
   it('parseEdges rejects invalid', () => { expect(parseEdges('10', '20', '30', '40')).toBeNull(); });
@@ -22,5 +22,17 @@ describe('geo', () => {
     const edges = { n: -3.5, s: -3.6, e: 115.9, w: 115.8 };
     expect(insideRegion(edges, [110.7, -3.6, 115.9, 0.8])).toBe(true);
     expect(insideRegion(edges, [97.3, 17.0, 101.5, 20.5])).toBe(false);
+  });
+
+  it('cornersToEdges fills N/S/E/W', () => {
+    expect(cornersToEdges(-18, -64, -14, -60)).toEqual({ n: '-14', s: '-18', e: '-60', w: '-64' });
+    expect(cornersToEdges(-14, -60, -18, -64)).toEqual({ n: '-14', s: '-18', e: '-60', w: '-64' });
+  });
+
+  it('validatePoint', () => {
+    expect(validatePoint('', '', '')).toBe('Enter a latitude, a longitude and a radius.');
+    expect(validatePoint('-2', '113', '50')).toBeNull();
+    expect(validatePoint('-2', '113', '600')).toBe('The radius must be between 1 and 500 km.');
+    expect(pointAreaKm2(10)).toBeCloseTo(Math.PI * 100);
   });
 });

@@ -29,6 +29,14 @@ export function round4(x: number): number {
   return Math.round(x * 10000) / 10000;
 }
 
+export function cornersToEdges(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const n = round4(Math.max(aLat, bLat));
+  const s = round4(Math.min(aLat, bLat));
+  const e = round4(wrapLon(Math.max(aLon, bLon)));
+  const w = round4(wrapLon(Math.min(aLon, bLon)));
+  return { n: String(n), s: String(s), e: String(e), w: String(w) };
+}
+
 export const MAX_AREA_KM2 = 500000;
 
 export function validateEdges(n: string, s: string, e: string, w: string): string | null {
@@ -45,4 +53,25 @@ export function validateEdges(n: string, s: string, e: string, w: string): strin
 export function insideRegion(edges: Edges, regionBbox: [number, number, number, number]): boolean {
   const [rw, rs, re, rn] = regionBbox;
   return edges.w >= rw && edges.e <= re && edges.s >= rs && edges.n <= rn;
+}
+
+export function pointAreaKm2(radiusKm: number): number {
+  return Math.PI * radiusKm * radiusKm;
+}
+
+export function validatePoint(lat: string, lon: string, radius: string): string | null {
+  const la = Number(lat), lo = Number(lon), r = Number(radius);
+  if ([lat, lon, radius].some((v) => v.trim() === '') || [la, lo, r].some((v) => !Number.isFinite(v))) {
+    return 'Enter a latitude, a longitude and a radius.';
+  }
+  if (la < -90 || la > 90) return 'North and South must be between −90 and 90.';
+  if (lo < -180 || lo > 180) return 'East and West must be between −180 and 180.';
+  if (r < 1 || r > 500) return 'The radius must be between 1 and 500 km.';
+  if (pointAreaKm2(r) > MAX_AREA_KM2) return 'Larger than the 500,000 km² limit. Draw a smaller area.';
+  return null;
+}
+
+export function pointInRegion(lat: number, lon: number, regionBbox: [number, number, number, number]): boolean {
+  const [rw, rs, re, rn] = regionBbox;
+  return lon >= rw && lon <= re && lat >= rs && lat <= rn;
 }
