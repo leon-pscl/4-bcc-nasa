@@ -271,6 +271,10 @@ are smaller. That's why the series counts cells, not rows (Stage 2).
    small commits. Never commit `data/raw/`, `data/processed/`, `.env` or a FIRMS `MAP_KEY`.
    The key is part of every FIRMS URL, so **never print, log or raise a full URL**. Replace
    the key with `***` everywhere: logs, exceptions, the manifest and test output.
+   **Never copy any value from `.env` into code, tests, logs, commits or reports.**
+   Tests use their own dummy values written to a temp dir; CI fails on any 32-hex string
+   outside `data/` and the mock files. If a secret ever lands in a tracked file, treat the
+   secret as compromised: rotate it first, then remove it.
 9. **Synthetic data must always be labeled.** Any dataset made by `firecal/devdata.py` sets
    `synthetic: true` in `coverage.json`, and the UI shows a visible "SYNTHETIC DATA" banner
    whenever it is used. Synthetic data is written to `data/synthetic/`, never over real data.

@@ -240,11 +240,21 @@ def test_unknown_api_path_is_json_404(client):
     assert r.headers["Content-Type"].startswith("application/json")
 
 
-def test_assets_path_traversal(client):
-    r = client.get("/assets/..%2F..%2F..%2F.env")
-    body = r.get_data(as_text=True)
-    assert "FIRMS_MAP_KEY" not in body
-    assert "***REMOVED***" not in body
+def test_assets_path_traversal(tmp_path, env):
+    # the test writes its own fake .env with a dummy key into a temp dir;
+    # the dummy must never be served through /assets
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "assets" / "ok.txt").write_text("ok", encoding="utf-8")
+    dummy = "TEST_DUMMY_NOT_A_FIRMS_KEY"
+    (dist / ".env").write_text(f"FIRMS_MAP_KEY={dummy}\n", encoding="utf-8")
+    app = create_app(env, dist_dir=str(dist))
+    c = app.test_client()
+    for attempt in ("/assets/..%2F.env", "/assets/..%2F..%2F.env", "/assets/%2e%2e/.env"):
+        r = c.get(attempt)
+        assert dummy not in r.get_data(as_text=True)
+    r = c.get("/assets/ok.txt")
+    assert r.status_code == 200 and r.get_data(as_text=True) == "ok"
 
 
 def test_bad_month_is_400(client):
