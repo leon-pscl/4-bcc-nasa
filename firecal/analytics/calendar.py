@@ -1,4 +1,4 @@
-"""Burning calendar analytics (Stage 4).
+"""Burning calendar analytics (Stage 4), C6 shape.
 
 DuckDB over the partitioned harmonized dataset: the calendar for a 500,000 km²
 area builds in about a second.
@@ -12,20 +12,20 @@ from firecal.dataset import read_dataset
 
 
 def calendar_matrix(area, start, end, today, settings, region=None):
+    """C6 calendar shape. `today` is the latest data date (never the server clock)."""
+    import statistics as st
     import duckdb
     con = duckdb.connect()
     con.execute("PRAGMA threads=4")
     con.execute("PRAGMA memory_limit='4GB'")
     root = read_dataset(settings, "harmonized_daily", [region] if region else None)
-    start_s = str(start)
-    end_s = str(end)
     cell_filter = area.bbox_sql(area)
     rows = con.execute(f"""
         SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
                EXTRACT(month FROM date_local)::INTEGER AS m,
                SUM(value) AS v
         FROM {root}
-        WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
+        WHERE date_local >= DATE '{start}' AND date_local <= DATE '{end}'
           AND ({cell_filter})
         GROUP BY 1,2
     """).fetchall()
@@ -33,85 +33,89 @@ def calendar_matrix(area, start, end, today, settings, region=None):
     for y, m, v in rows:
         matrix.setdefault(y, {})[m] = float(v)
 
-    years = sorted(matrix) if matrix else []
-    all_years = list(range(pd.to_datetime(start).year, pd.to_datetime(end).year + 1))
+    s_dt, e_dt = pd.to_datetime(start), pd.to_datetime(end)
+    all_years = list(range(s_dt.year, e_dt.year + 1))
     months = list(range(1, 13))
 
-    def cell_value(y, m):
-        v = matrix.get(y, {}).get(m)
-        return v
+    def value_at(y, m):
+        return matrix.get(y, {}).get(m)
 
     # baseline years: complete years inside the range, excluding the current year
+    cur_year = pd.to_datetime(today).year
     baseline = []
     for y in all_years:
-        if y == pd.to_datetime(start).year or y == pd.to_datetime(end).year:
+        if y == cur_year:
             continue
-        # a year is "complete" if the whole year is inside [start, end]
-        if pd.Timestamp(year=y, month=1, day=1) >= pd.Timestamp(start) and \
-           pd.Timestamp(year=y, month=12, day=31) <= pd.Timestamp(end):
+        if pd.Timestamp(y, 1, 1) >= s_dt and pd.Timestamp(y, 12, 31) <= e_dt:
             baseline.append(y)
-    warning = len(baseline) < settings.MIN_BASELINE_YEARS
+    warning = (f"fewer than {settings.MIN_BASELINE_YEARS} complete years before the current year"
+               if len(baseline) < settings.MIN_BASELINE_YEARS else None)
 
-    medians = {}
-    q25 = {}
-    q75 = {}
+    medians, p25s, p75s = {}, {}, {}
     for m in months:
-        vals = [matrix.get(y, {}).get(m) for y in baseline]
-        vals = [v for v in vals if v is not None]
+        vals = sorted(v for v in (matrix.get(y, {}).get(m) for y in baseline) if v is not None)
         if vals:
-            import statistics as st
-            vals_sorted = sorted(vals)
-            n = len(vals_sorted)
-            medians[m] = st.median(vals_sorted)
-            q25[m] = vals_sorted[int(0.25 * (n - 1))]
-            q75[m] = vals_sorted[int(0.75 * (n - 1))]
+            n = len(vals)
+            medians[m] = st.median(vals)
+            p25s[m] = vals[int(0.25 * (n - 1))]
+            p75s[m] = vals[int(0.75 * (n - 1))]
         else:
             medians[m] = None
-            q25[m] = None
-            q75[m] = None
+            p25s[m] = None
+            p75s[m] = None
 
+    # partial: end before the last day of its month
     end_ts = pd.to_datetime(end).date()
-    last_day_of_month = pd.Timestamp(end_ts.year, end_ts.month, 1) + pd.offsets.MonthEnd(0)
+    last_day = pd.Timestamp(end_ts.year, end_ts.month, 1) + pd.offsets.MonthEnd(0)
     partial = None
-    if end_ts < last_day_of_month.date():
+    if end_ts < last_day.date():
         partial = {"year": end_ts.year, "month": end_ts.month, "through_day": end_ts.day}
 
-    out_matrix = {}
+    matrix_out = []
+    anomaly = []
+    anomaly_pct = []
+    annual_totals = []
+    partial_years = []
     for y in all_years:
-        out_matrix[y] = {}
+        row = []
         for m in months:
-            v = cell_value(y, m)
-            if v is None:
-                # month fully outside the range -> null
-                if pd.Timestamp(y, m, 1) < pd.Timestamp(start) or pd.Timestamp(y, m, 1) > pd.Timestamp(end):
-                    out_matrix[y][m] = None
-                else:
-                    out_matrix[y][m] = 0.0
+            v = value_at(y, m)
+            if v is not None:
+                row.append(v)
+                continue
+            in_range = (y > s_dt.year or (y == s_dt.year and m >= s_dt.month)) and \
+                       (y < e_dt.year or (y == e_dt.year and m <= e_dt.month))
+            row.append(0.0 if in_range else None)
+        matrix_out.append(row)
+        annual_totals.append(sum(v for v in row if v is not None))
+        # partial year = the year containing `end` when partial is set
+        if partial and y == partial["year"]:
+            partial_years.append(y)
+        a_row, p_row = [], []
+        for m in months:
+            v = value_at(y, m)
+            med = medians[m]
+            if v is None or med is None:
+                a_row.append(None)
+                p_row.append(None)
             else:
-                out_matrix[y][m] = v
-
-    anomaly = {}
-    anomaly_pct = {}
-    for m in months:
-        med = medians[m]
-        cur = None
-        this_year = pd.to_datetime(end).year
-        v = matrix.get(this_year, {}).get(m)
-        if med is not None and v is not None:
-            anomaly[m] = v - med
-            anomaly_pct[m] = (100 * (v - med) / med) if med else None
-        else:
-            anomaly[m] = None
-            anomaly_pct[m] = None
+                a_row.append(v - med)
+                p_row.append(100 * (v - med) / med if med else None)
+        anomaly.append(a_row)
+        anomaly_pct.append(p_row)
 
     return {
-        "matrix": {str(y): {str(m): out_matrix[y][m] for m in months} for y in all_years},
-        "baseline_years": baseline,
-        "median": {str(m): medians[m] for m in months},
-        "q25": {str(m): q25[m] for m in months},
-        "q75": {str(m): q75[m] for m in months},
-        "anomaly": {str(m): anomaly[m] for m in months},
-        "anomaly_pct": {str(m): anomaly_pct[m] for m in months},
+        "years": all_years,
+        "values": matrix_out,
         "partial": partial,
+        "monthly_median": [medians[m] for m in months],
+        "monthly_p25": [p25s[m] for m in months],
+        "monthly_p75": [p75s[m] for m in months],
+        "anomaly": anomaly,
+        "anomaly_pct": anomaly_pct,
+        "annual_totals": annual_totals,
+        "partial_years": partial_years,
+        "baseline_years": baseline,
         "baseline_warning": warning,
+        "coverage_warning": None,
     }

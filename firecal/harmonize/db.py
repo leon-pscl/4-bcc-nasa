@@ -39,7 +39,8 @@ def calibration_sql(cd, cal_years, min_cal, shrink_m=0, platform="Aqua", referen
     s AS (SELECT tile_id, month, region, SUM(n) AS viirs FROM c WHERE platform='{reference}' GROUP BY 1,2,3),
     m AS (
       SELECT COALESCE(a.tile_id,s.tile_id) AS tile_id, COALESCE(a.month,s.month) AS month,
-             a.region, COALESCE(a.aqua,0) AS aqua, COALESCE(s.viirs,0) AS viirs
+             COALESCE(a.region, s.region) AS region,
+             COALESCE(a.aqua,0) AS aqua, COALESCE(s.viirs,0) AS viirs
       FROM a FULL OUTER JOIN s
         ON a.tile_id=s.tile_id AND a.month=s.month AND a.region=s.region
     ),
@@ -423,15 +424,8 @@ def rebuild(settings, region=None, state=None):
         views.append(f"cal_all_{i}")
     con.execute("CREATE OR REPLACE TEMP VIEW cal AS "
                 + " UNION ALL ".join(f"SELECT * FROM {v}" for v in views))
-    # the ALL month-0 row (grand total), per platform
-    con.execute("CREATE OR REPLACE TEMP VIEW cal_final AS "
-                "SELECT * FROM cal "
-                "UNION ALL "
-                "SELECT region, platform, reference, 'ALL' AS tile_id, 0 AS month, "
-                "  SUM(viirs_celldays)::DOUBLE / NULLIF(SUM(modis_celldays),0) AS k, "
-                "  SUM(modis_celldays) AS modis_celldays, "
-                "  SUM(viirs_celldays) AS viirs_celldays, "
-                "  'all' AS level FROM cal GROUP BY region, platform, reference")
+    # cal already carries the ALL month-0 row (from calibration_all_sql)
+    con.execute("CREATE OR REPLACE TEMP VIEW cal_final AS SELECT * FROM cal")
 
     # write calibration.parquet (single file, all regions; replace this region's rows)
     cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")

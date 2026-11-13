@@ -47,11 +47,18 @@ def main():
         if os.path.exists(h_root):
             import duckdb as _duck
             vcon = _duck.connect()
-            latest = vcon.execute(
-                "SELECT MAX(date_local) FROM read_parquet('" +
+            stats = vcon.execute(
+                "SELECT MIN(date_local), MAX(date_local) FROM read_parquet('" +
                 h_root.replace(os.sep, '/') + "/region=" + args.region + "/*/*.parquet')"
-            ).fetchone()[0]
-            bbox = settings.REGIONS.get(args.region)
+            ).fetchone()
+            latest = str(stats[1])
+            start = str(stats[0])
+            reg_path = os.path.join("config", "regions.json")
+            meta = {}
+            if os.path.exists(reg_path):
+                meta = next((r for r in __import__("json").load(open(reg_path))["regions"]
+                             if r["name"] == args.region), {})
+            bbox = settings.REGIONS.get(args.region) or tuple(meta.get("bbox", [0, 0, 0, 0]))
             cov_path = os.path.join(settings.DATA_PROCESSED, "coverage.json")
             cov = []
             if os.path.exists(cov_path):
@@ -59,10 +66,11 @@ def main():
                     cov = json.load(open(cov_path))
                 except Exception:
                     cov = []
-            entry = {"name": args.region, "bbox": list(bbox) if bbox else None,
-                     "start": str(latest), "end": str(latest),
+            entry = {"name": args.region, "label": meta.get("label", args.region),
+                     "bbox": list(bbox), "countries": meta.get("countries", []),
+                     "start": start, "end": latest,
                      "platforms": ["Aqua", "SNPP", "NOAA20", "NOAA21"],
-                     "latest_date": str(latest), "synthetic": False}
+                     "latest_date": latest, "synthetic": False}
             out_cov = [e for e in cov if e.get("name") != args.region] + [entry]
             tmp = cov_path + ".tmp"
             with open(tmp, "w") as f:

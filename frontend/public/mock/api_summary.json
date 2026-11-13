@@ -1,9 +1,1 @@
-{
-  "total": 141,
-  "peak_month": {"year": 2026, "month": 8, "value": 8},
-  "peak_year": {"year": 2025, "value": 78},
-  "current_month": {"year": 2026, "month": 11, "through_day": 12, "value": 11, "median_same_span": 10, "pct_vs_median": 10},
-  "latest_data_date": "2026-11-12",
-  "synthetic": true,
-  "data_version": "2026-11-13T00:00:00Z"
-}
+{"total":539931.9294327465,"peak_month":{"year":2006,"month":10,"value":25466.943182043535},"peak_year":{"year":2006,"value":67594.81386689957},"current_month":{"year":2026,"month":11,"through_day":14,"value":1242.2715588197525,"median_same_span":157.07541593354856,"pct_vs_median":690.87586777125},"latest_data_date":"2026-11-14","synthetic":false,"data_version":"155a6fb503336200"}

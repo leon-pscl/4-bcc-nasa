@@ -1,15 +1,44 @@
-"""Map cells analytics."""
+"""Map cells analytics (Stage 4): grid cells for the map, coarse when too many."""
 
-import pandas as pd
+from firecal.dataset import read_dataset
+
+MAX_MAP_CELLS = 20_000
 
 
-def map_cells(area, start, end, month=None, harmonized_path=None):
-    df = pd.read_parquet(harmonized_path)
-    mask = df.apply(lambda r: area.contains_cell(r["cell_lat_idx"], r["cell_lon_idx"]), axis=1)
-    df = df[mask]
-    df["date_local"] = pd.to_datetime(df["date_local"]).dt.date
-    df = df[(df["date_local"] >= pd.to_datetime(start).date()) & (df["date_local"] <= pd.to_datetime(end).date())]
-    if month is not None:
-        df = df[pd.to_datetime(df["date_local"]).dt.month == month]
-    agg = df.groupby(["cell_lat_idx", "cell_lon_idx"]).agg(value=("value", "sum")).reset_index()
-    return {"cells": agg.to_dict(orient="records")}
+def map_cells(area, start, end, settings, month=None, region=None):
+    import duckdb
+    con = duckdb.connect()
+    con.execute("PRAGMA threads=4")
+    con.execute("PRAGMA memory_limit='4GB'")
+    root = read_dataset(settings, "harmonized_daily", [region] if region else None)
+    cell_filter = area.bbox_sql(area)
+    month_filter = f"AND EXTRACT(month FROM date_local) = {int(month)}" if month else ""
+    where = f"""
+        date_local >= DATE '{start}' AND date_local <= DATE '{end}'
+          AND ({cell_filter}) {month_filter}
+    """
+    n = con.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM {root} WHERE {where}
+            GROUP BY cell_lat_idx, cell_lon_idx
+        )
+    """).fetchone()[0]
+    if n > MAX_MAP_CELLS:
+        grid = 0.25
+        aggregated_to = 5
+        bin_lat, bin_lon = "FLOOR(cell_lat_idx / 5)", "FLOOR(cell_lon_idx / 5)"
+    else:
+        grid = 0.05
+        aggregated_to = None
+        bin_lat, bin_lon = "cell_lat_idx", "cell_lon_idx"
+    rows = con.execute(f"""
+        SELECT ROUND({bin_lat} * {grid} + {grid} / 2, 4) AS lat,
+               ROUND({bin_lon} * {grid} + {grid} / 2, 4) AS lon,
+               SUM(value) AS v
+        FROM {root}
+        WHERE {where}
+        GROUP BY 1,2
+    """).fetchall()
+    return {"grid_deg": grid,
+            "aggregated_to": aggregated_to,
+            "cells": [{"lat": r[0], "lon": r[1], "value": r[2]} for r in rows]}
