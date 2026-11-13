@@ -5,76 +5,98 @@ import pandas as pd
 from firecal.contracts import validate_calibration
 
 
-def _k_for(aqua, snpp):
-    if aqua == 0:
-        return 1.0
-    return snpp / aqua
-
-
 def fit_calibration(celldays, settings):
     cal_years = range(settings.CALIBRATION_YEARS[0], settings.CALIBRATION_YEARS[1] + 1)
     df = celldays.copy()
     df["year"] = pd.to_datetime(df["date_local"]).dt.year
     df = df[df["year"].isin(cal_years)]
-    # only Aqua and SNPP
+    if df.empty:
+        raise ValueError("no calibration years present in data")
     aqua = df[df["platform"] == "Aqua"]
     snpp = df[df["platform"] == "SNPP"]
+    if aqua.empty:
+        raise ValueError("no Aqua cell-days in calibration years")
 
-    # sums per tile+month
-    a_sum = aqua.groupby(["tile_id", pd.to_datetime(aqua["date_local"]).dt.month]).agg(modis=("n_detections", "sum")).reset_index()
-    a_sum = a_sum.rename(columns={"date_local": "month"})
-    s_sum = snpp.groupby(["tile_id", pd.to_datetime(snpp["date_local"]).dt.month]).agg(viirs=("n_detections", "sum")).reset_index()
-    s_sum = s_sum.rename(columns={"date_local": "month"})
+    # cell-day counts
+    a_counts = aqua.groupby(["tile_id", pd.to_datetime(aqua["date_local"]).dt.month]).size().rename("aqua_cd")
+    s_counts = snpp.groupby(["tile_id", pd.to_datetime(snpp["date_local"]).dt.month]).size().rename("snpp_cd")
+    merged = pd.concat([a_counts, s_counts], axis=1).fillna(0).reset_index()
+    merged = merged.rename(columns={"date_local": "month"})
 
-    merged = pd.merge(a_sum, s_sum, on=["tile_id", "month"], how="outer").fillna(0)
+    tile_totals = merged.groupby("tile_id").agg(aqua=("aqua_cd", "sum"), snpp=("snpp_cd", "sum"))
+    month_totals = merged.groupby("month").agg(aqua=("aqua_cd", "sum"), snpp=("snpp_cd", "sum"))
+    grand_a = int(merged["aqua_cd"].sum())
+    grand_s = int(merged["snpp_cd"].sum())
 
-    # all-tile-month and all-tile aggregates for fallback
-    all_month = merged.groupby("month").agg(modis=("modis", "sum"), viirs=("viirs", "sum")).reset_index()
-    all_all = pd.DataFrame({"modis": [merged["modis"].sum()], "viirs": [merged["viirs"].sum()]})
+    def k_ratio(a, s):
+        if a == 0:
+            raise ValueError("cannot calibrate: zero Aqua cell-days")
+        return s / a
 
     rows = []
-    tiles = merged["tile_id"].unique()
-    months = range(1, 13)
+    tiles = sorted(df["tile_id"].unique())
     for tile in tiles:
-        for m in months:
+        tt = tile_totals.loc[tile] if tile in tile_totals.index else {"aqua": 0, "snpp": 0}
+        for m in range(1, 13):
             sub = merged[(merged["tile_id"] == tile) & (merged["month"] == m)]
-            aqua_cd = int(sub["modis"].sum()) if len(sub) else 0
-            snpp_cd = int(sub["viirs"].sum()) if len(sub) else 0
-            if aqua_cd >= settings.MIN_CALIBRATION_CELLDAYS:
-                k = _k_for(aqua_cd, snpp_cd)
+            a_cd = int(sub["aqua_cd"].sum()) if len(sub) else 0
+            s_cd = int(sub["snpp_cd"].sum()) if len(sub) else 0
+            if a_cd >= settings.MIN_CALIBRATION_CELLDAYS:
+                k = k_ratio(a_cd, s_cd)
                 level = "tile_month"
+                used_a, used_s = a_cd, s_cd
+            elif int(tt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
+                k = k_ratio(int(tt["aqua"]), int(tt["snpp"]))
+                level = "tile"
+                used_a, used_s = int(tt["aqua"]), int(tt["snpp"])
             else:
-                # tile all months
-                t_sub = merged[merged["tile_id"] == tile]
-                a_t = int(t_sub["modis"].sum())
-                s_t = int(t_sub["viirs"].sum())
-                if a_t >= settings.MIN_CALIBRATION_CELLDAYS:
-                    k = _k_for(a_t, s_t)
-                    level = "tile"
-                    aqua_cd, snpp_cd = a_t, s_t
+                mt = month_totals.loc[m] if m in month_totals.index else {"aqua": 0, "snpp": 0}
+                if int(mt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
+                    k = k_ratio(int(mt["aqua"]), int(mt["snpp"]))
+                    level = "all_month"
+                    used_a, used_s = int(mt["aqua"]), int(mt["snpp"])
                 else:
-                    # all tiles this month
-                    am = all_month[all_month["month"] == m]
-                    a_am = int(am["modis"].sum()) if len(am) else 0
-                    s_am = int(am["viirs"].sum()) if len(am) else 0
-                    if a_am >= settings.MIN_CALIBRATION_CELLDAYS:
-                        k = _k_for(a_am, s_am)
-                        level = "all_month"
-                        aqua_cd, snpp_cd = a_am, s_am
-                    else:
-                        a_aa = int(all_all["modis"].iloc[0])
-                        s_aa = int(all_all["viirs"].iloc[0])
-                        k = _k_for(a_aa, s_aa)
-                        level = "all"
-                        aqua_cd, snpp_cd = a_aa, s_aa
+                    k = k_ratio(grand_a, grand_s)
+                    level = "all"
+                    used_a, used_s = grand_a, grand_s
             rows.append({
                 "tile_id": tile,
                 "month": m,
                 "k": float(k),
-                "modis_celldays": int(aqua_cd),
-                "viirs_celldays": int(snpp_cd),
+                "modis_celldays": int(used_a),
+                "viirs_celldays": int(used_s),
                 "level": level,
             })
+
+    # ALL rows
+    for m in range(1, 13):
+        mt = month_totals.loc[m] if m in month_totals.index else {"aqua": 0, "snpp": 0}
+        if int(mt["aqua"]) >= settings.MIN_CALIBRATION_CELLDAYS:
+            k = k_ratio(int(mt["aqua"]), int(mt["snpp"]))
+            level = "all_month"
+            ua, us = int(mt["aqua"]), int(mt["snpp"])
+        else:
+            k = k_ratio(grand_a, grand_s)
+            level = "all"
+            ua, us = grand_a, grand_s
+        rows.append({
+            "tile_id": "ALL",
+            "month": m,
+            "k": float(k),
+            "modis_celldays": int(ua),
+            "viirs_celldays": int(us),
+            "level": level,
+        })
+    # ALL month 0
+    rows.append({
+        "tile_id": "ALL",
+        "month": 0,
+        "k": float(k_ratio(grand_a, grand_s)),
+        "modis_celldays": int(grand_a),
+        "viirs_celldays": int(grand_s),
+        "level": "all",
+    })
+
     out = pd.DataFrame(rows)
     out["tile_id"] = out["tile_id"].astype("string")
     out["month"] = out["month"].astype("int8")

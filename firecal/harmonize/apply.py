@@ -10,72 +10,84 @@ def build_harmonized(celldays, calibration, settings):
     switch = pd.to_datetime(settings.SWITCH_DATE).date()
     cd = celldays.copy()
     cd["date_local"] = pd.to_datetime(cd["date_local"]).dt.date
-    cd = cd[cd["date_local"] >= start]
+    cd = cd[cd["date_local"] >= start].copy()
 
-    # lookup k
     cal = calibration.copy()
-    cal_lookup = {}
-    for _, r in cal.iterrows():
-        cal_lookup[(r["tile_id"], int(r["month"]))] = (float(r["k"]), r["level"])
+    # ensure month int
+    cal["month"] = cal["month"].astype(int)
 
-    def k_for(tile, month):
-        if (tile, month) in cal_lookup:
-            return cal_lookup[(tile, month)][0]
-        if (tile, 0) in cal_lookup:
-            return cal_lookup[(tile, 0)][0]
-        # fallback all
-        for (t, m), (k, _) in cal_lookup.items():
-            if m == month:
-                return k
-        # last resort
-        if cal_lookup:
-            return list(cal_lookup.values())[0][0]
-        return 1.0
+    def lookup_k(tile, month):
+        # tile+month
+        sub = cal[(cal["tile_id"] == tile) & (cal["month"] == month)]
+        if len(sub):
+            return float(sub.iloc[0]["k"])
+        sub = cal[(cal["tile_id"] == tile) & (cal["month"] == 0)]
+        if len(sub):
+            return float(sub.iloc[0]["k"])
+        sub = cal[(cal["tile_id"] == "ALL") & (cal["month"] == month)]
+        if len(sub):
+            return float(sub.iloc[0]["k"])
+        sub = cal[(cal["tile_id"] == "ALL") & (cal["month"] == 0)]
+        if len(sub):
+            return float(sub.iloc[0]["k"])
+        raise ValueError("no calibration factor found")
 
     rows = []
-    # pre-switch: Aqua scaled
-    pre = cd[(cd["date_local"] < switch) & (cd["platform"] == "Aqua")]
-    for _, r in pre.iterrows():
-        m = r["date_local"].month
-        k = k_for(r["tile_id"], m)
-        rows.append({
-            "cell_lat_idx": int(r["cell_lat_idx"]),
-            "cell_lon_idx": int(r["cell_lon_idx"]),
-            "tile_id": r["tile_id"],
-            "date_local": r["date_local"],
-            "value": float(k),
+    # pre-switch Aqua
+    pre = cd[(cd["date_local"] < switch) & (cd["platform"] == "Aqua")].copy()
+    if len(pre):
+        pre["month"] = pd.to_datetime(pre["date_local"]).dt.month
+        pre["k"] = [lookup_k(t, m) for t, m in zip(pre["tile_id"], pre["month"])]
+        pre_out = pd.DataFrame({
+            "cell_lat_idx": pre["cell_lat_idx"].astype(int),
+            "cell_lon_idx": pre["cell_lon_idx"].astype(int),
+            "tile_id": pre["tile_id"],
+            "date_local": pre["date_local"],
+            "value": pre["k"].astype(float),
             "basis": "modis_scaled",
         })
-    # post-switch: SNPP
-    post = cd[(cd["date_local"] >= switch) & (cd["platform"] == "SNPP")]
-    for _, r in post.iterrows():
-        rows.append({
-            "cell_lat_idx": int(r["cell_lat_idx"]),
-            "cell_lon_idx": int(r["cell_lon_idx"]),
-            "tile_id": r["tile_id"],
-            "date_local": r["date_local"],
+        rows.append(pre_out)
+
+    # post-switch SNPP
+    post = cd[(cd["date_local"] >= switch) & (cd["platform"] == "SNPP")].copy()
+    if len(post):
+        post_out = pd.DataFrame({
+            "cell_lat_idx": post["cell_lat_idx"].astype(int),
+            "cell_lon_idx": post["cell_lon_idx"].astype(int),
+            "tile_id": post["tile_id"],
+            "date_local": post["date_local"],
             "value": 1.0,
             "basis": "viirs",
         })
-    # gap fill: dates >= switch where SNPP has zero detections across whole area but Aqua has some
-    post_dates = sorted(set(cd[cd["date_local"] >= switch]["date_local"]))
-    for d in post_dates:
-        snpp_day = cd[(cd["date_local"] == d) & (cd["platform"] == "SNPP")]
-        aqua_day = cd[(cd["date_local"] == d) & (cd["platform"] == "Aqua")]
-        if len(snpp_day) == 0 and len(aqua_day) > 0:
-            for _, r in aqua_day.iterrows():
-                m = d.month
-                k = k_for(r["tile_id"], m)
-                rows.append({
-                    "cell_lat_idx": int(r["cell_lat_idx"]),
-                    "cell_lon_idx": int(r["cell_lon_idx"]),
-                    "tile_id": r["tile_id"],
-                    "date_local": d,
-                    "value": float(k),
+        rows.append(post_out)
+
+    # gap fill
+    if len(cd[cd["date_local"] >= switch]):
+        post_dates = sorted(set(cd[cd["date_local"] >= switch]["date_local"]))
+        # platforms per date
+        plat_by_date = cd[cd["date_local"] >= switch].groupby("date_local")["platform"].agg(lambda s: set(s))
+        aqua_post = cd[(cd["date_local"] >= switch) & (cd["platform"] == "Aqua")].copy()
+        if len(aqua_post):
+            aqua_post["month"] = pd.to_datetime(aqua_post["date_local"]).dt.month
+            aqua_post["k"] = [lookup_k(t, m) for t, m in zip(aqua_post["tile_id"], aqua_post["month"])]
+            gap_dates = [d for d in post_dates if "SNPP" not in plat_by_date.get(d, set()) and "Aqua" in plat_by_date.get(d, set())]
+            if gap_dates:
+                gap_df = aqua_post[aqua_post["date_local"].isin(gap_dates)]
+                gap_out = pd.DataFrame({
+                    "cell_lat_idx": gap_df["cell_lat_idx"].astype(int),
+                    "cell_lon_idx": gap_df["cell_lon_idx"].astype(int),
+                    "tile_id": gap_df["tile_id"],
+                    "date_local": gap_df["date_local"],
+                    "value": gap_df["k"].astype(float),
                     "basis": "modis_gapfill",
                 })
+                rows.append(gap_out)
 
-    out = pd.DataFrame(rows, columns=["cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis"])
+    if rows:
+        out = pd.concat(rows, ignore_index=True)
+    else:
+        out = pd.DataFrame(columns=["cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis"])
+
     if len(out):
         out["cell_lat_idx"] = out["cell_lat_idx"].astype("int32")
         out["cell_lon_idx"] = out["cell_lon_idx"].astype("int32")
