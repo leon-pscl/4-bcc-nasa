@@ -14,7 +14,7 @@ jobs:
       - run: pytest -q
       - name: No 32-hex strings outside data and mocks (leaked-secret guard)
         run: |
-          if git grep -InE '\b[0-9a-fA-F]{32}\b' -- . ':!frontend/public/mock'; then
+          if git grep -lIE '\b[0-9a-fA-F]{32}\b' -- . ':!frontend/public/mock'; then
             echo "::error::32-hex string found outside data/ and mock files (possible leaked secret). See instructions.md section 3, rule 8."
             exit 1
           fi
