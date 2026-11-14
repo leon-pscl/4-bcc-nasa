@@ -446,11 +446,6 @@ defaults `data/raw` and `data/processed`. `.env.example` already exists.
      "countries": ["Myanmar", "Thailand", "Laos", "Cambodia", "Vietnam", "Malaysia",
                    "Singapore", "Brunei", "Indonesia", "Philippines", "Timor-Leste",
                    "China", "Taiwan", "India", "Bangladesh"],
-     "history": "country_files"},
-    {"name": "amazon", "label": "Amazon",
-     "bbox": [-80.0, -20.0, -44.0, 6.0],
-     "countries": ["Brazil", "Bolivia", "Peru", "Ecuador", "Colombia", "Venezuela",
-                   "Guyana", "Suriname", "French Guiana", "Paraguay", "Chile"],
      "history": "country_files"}
   ],
   "starter_areas": [
@@ -459,11 +454,7 @@ defaults `data/raw` and `data/processed`. `.env.example` already exists.
     {"name": "northern_thailand", "label": "Northern Thailand", "region": "southeast_asia",
      "bbox": [97.3, 17.0, 101.5, 20.5]},
     {"name": "luzon_example", "label": "Luzon example", "region": "southeast_asia",
-     "bbox": [121.116028, 14.583583, 121.643372, 15.445738]},
-    {"name": "rondonia", "label": "Rondônia", "region": "amazon",
-     "bbox": [-66.0, -13.7, -60.0, -7.9]},
-    {"name": "bolivia_east", "label": "East Bolivia", "region": "amazon",
-     "bbox": [-64, -18, -60, -14]}
+     "bbox": [121.116028, 14.583583, 121.643372, 15.445738]}
   ]
 }
 ```
@@ -478,8 +469,7 @@ Rules (Stage 0b tests them):
 - **`history`** is `country_files` (yearly files, then the API) or `api` (the API for
   everything, for a small region or one with no country files).
 - **Every starter area lies inside its region and is at most `MAX_AREA_KM2`.** Sizes:
-  Central Kalimantan 282,742 km², Northern Thailand 172,083, Luzon example 5,429, Rondônia
-  422,476, East Bolivia 190,127.
+  Central Kalimantan 282,742 km², Northern Thailand 172,083, Luzon example 5,429.
 - **Adding a region** is one entry here plus `python -m firecal.pipeline add-region <name>`
   (Stage 7). No code changes.
 

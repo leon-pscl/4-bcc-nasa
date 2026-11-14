@@ -1,7 +1,7 @@
 # NASA Space Apps — harmonized burning activity calendar
 
 A web app that turns 43 million MODIS and VIIRS fire-detection rows (2003–today)
-into a harmonized burning-activity calendar for Southeast Asia and the Amazon. It
+into a harmonized burning-activity calendar for Southeast Asia. It
 serves a server-side aggregation (DuckDB over partitioned Parquet) instead of
 shipping every detection to the browser.
 
@@ -93,7 +93,7 @@ years 2018–2021 is reported in the Methods tab.
 
 ## Limitations
 
-- Only two regions ship configured: Southeast Asia and the Amazon. Other areas
+- Southeast Asia is the only region configured; the Amazon is planned. Other areas
   need a backfill (`add-region`) and are not in the default coverage list.
 - `latest_date` is the last complete local day (both the night and day satellite
   passes). A fetch that runs before the day pass sees only the night pass, so the
@@ -102,6 +102,6 @@ years 2018–2021 is reported in the Methods tab.
 - NRT data is replaced by standard processing a few months later, so recent
   counts can shift slightly.
 - The pipeline has one writer at a time (an OS lock); concurrent runs exit.
-- The Amazon archive is not loaded by default; Amazon data must be backfilled.
+- The Amazon is not configured yet; when it ships, its archive must be backfilled.
 EOF
 echo done
