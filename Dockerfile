@@ -6,12 +6,16 @@ RUN npm ci
 COPY frontend/ ./
 RUN npx vite build
 
-# Stage 2: Python runtime (no Node, no node_modules)
-FROM python:3.12-slim
+# Stage 2: shared Python dependencies (web + pipeline)
+FROM python:3.12-slim AS backend-deps
 WORKDIR /app
 COPY requirements.txt .
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+
+# Target: web (serve the app). No rasterio: GeoTIFFs are read only by the
+# pipeline (add-region / cell_cover build).
+FROM backend-deps AS web
 COPY firecal/ ./firecal/
 COPY app.py ./
 COPY config/ ./config/
@@ -22,3 +26,16 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist/
 ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
 EXPOSE 8000
 CMD ["python", "-m", "flask", "--app", "app", "run", "--host", "0.0.0.0", "--port", "8000"]
+
+# Target: pipeline (updater / add-region). rasterio + GDAL for reading the
+# MCD12Q1 GeoTIFF granules in data/raw/landcover.
+FROM backend-deps AS pipeline
+# rasterio manylinux wheels bundle GDAL; no system libgdal needed
+RUN pip install --no-cache-dir rasterio==1.5.2
+COPY firecal/ ./firecal/
+COPY app.py ./
+COPY config/ ./config/
+COPY tests/ ./tests/
+COPY sample-data ./sample-data/
+ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
+CMD ["python", "-m", "firecal.pipeline", "update", "--all"]

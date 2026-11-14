@@ -647,6 +647,12 @@ Query parameters shared by all area endpoints:
 
 - an area, either `bbox=W,S,E,N` or `point=LAT,LON&radius_km=R`
 - `start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `cover=all|forest|farmland|other` (optional, default `all`). The `cover` filter
+  restricts fire cells to the matching IGBP class group (C9): forest (1-5),
+  farmland (12,14), other (6-11, 13, 15, 16). The cover map used for a fire on
+  date D is year(D)-1's map, clamped to the latest year present in C9
+  (currently 2024) for fires in later years. Every area endpoint echoes `cover`
+  in its `query` response block.
 
 Errors return `{"error": "...", "field": "..."}` with HTTP status 400 (bad input) or 422 (no
 data for this area; the response also lists the covered regions).
@@ -659,7 +665,7 @@ matching `If-None-Match` gets a 304.
 
 ```json
 {
-  "query": {"bbox": [-64, -18, -60, -14], "start": "2003-01-01", "end": "2026-11-10", "area_km2": 190127},
+  "query": {"bbox": [-64, -18, -60, -14], "start": "2003-01-01", "end": "2026-11-10", "area_km2": 190127, "cover": "forest"},
   "unit": "Hotspots (harmonized)",
   "years": [2003, 2004, "...", 2026],
   "values": [[12.0, 3.5, "... 12 numbers or null"], "... one list per year"],
@@ -691,11 +697,13 @@ For a point query, `query` has `point` and `radius_km` in place of `bbox`.
 
 ```json
 {
+  "query": {"bbox": [-64, -18, -60, -14], "start": "2003-01-01", "end": "2026-11-10", "area_km2": 190127, "cover": "forest"},
   "total": 123456.0,
   "peak_month": {"year": 2010, "month": 8, "value": 9876.0},
   "peak_year": {"year": 2010, "value": 34567.0},
   "current_month": {"year": 2026, "month": 11, "through_day": 10, "value": 210.0,
-                    "median_same_span": 150.0, "pct_vs_median": 40.0},
+                    "median_same_span": 150.0, "pct_vs_median": 40.0,
+                    "forest_share": 30.0, "median_forest_share": 45.0},
   "baseline_warning": null,
   "latest_data_date": "2026-11-10",
   "synthetic": false
@@ -710,7 +718,9 @@ in the same-days span counts as 0. `baseline_warning` is set when there are fewe
 `GET /api/map` (optional `month=YYYY-MM` to focus on one month)
 
 ```json
-{"grid_deg": 0.05, "aggregated_to": null, "cells": [{"lat": -16.025, "lon": -61.975, "value": 12.0}]}
+{"query": {"bbox": [-64, -18, -60, -14], "start": "2003-01-01", "end": "2026-11-10",
+            "area_km2": 190127, "cover": "forest"},
+ "grid_deg": 0.05, "aggregated_to": null, "cells": [{"lat": -16.025, "lon": -61.975, "value": 12.0}]}
 ```
 
 Other endpoints:
@@ -718,7 +728,9 @@ Other endpoints:
 - `GET /api/hotspots?page=1&page_size=100` returns paged detection rows as JSON
   (`page_size` ≤ 500). Shape (the frontend reads this):
   ```json
-  {"page": 1, "page_size": 100, "total": 1234,
+  {"query": {"bbox": [-64, -18, -60, -14], "start": "2003-01-01", "end": "2026-11-10",
+             "area_km2": 190127, "cover": "forest"},
+   "page": 1, "page_size": 100, "total": 1234,
    "rows": [{"date_local": "2026-09-27", "acq_datetime_utc": "2026-09-27T00:18:00",
              "latitude": -16.025, "longitude": -61.975,
              "confidence_class": "nominal", "frp": 12.3, "daynight": "D",

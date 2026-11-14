@@ -81,6 +81,15 @@ def create_app(settings=None, dist_dir=None):
             raise ParamError("cover must be one of all, forest, farmland, other", "cover")
         return cover
 
+    def query_block(area, start, end, cover):
+        q = {"start": str(start), "end": str(end), "area_km2": area.area_km2(), "cover": cover}
+        if area.radius_km is not None:
+            q["point"] = [area.lat, area.lon]
+            q["radius_km"] = area.radius_km
+        else:
+            q["bbox"] = [area.w, area.s, area.e, area.n]
+        return q
+
     def coverage_response():
         cov = load_coverage(settings)
         dv = _app_version(settings)
@@ -194,12 +203,7 @@ def create_app(settings=None, dist_dir=None):
         cover = cover_arg()
         from firecal.analytics.calendar import calendar_matrix
         result = calendar_matrix(area, start, end, today, settings, region=region, cover=cover)
-        query = {"start": start, "end": end, "area_km2": area.area_km2(), "cover": cover}
-        if area.radius_km is not None:
-            query["point"] = [area.lat, area.lon]
-            query["radius_km"] = area.radius_km
-        else:
-            query["bbox"] = [area.w, area.s, area.e, area.n]
+        query = query_block(area, start, end, cover)
         body = {
             "query": query,
             "unit": "Hotspots (harmonized)",
@@ -232,7 +236,8 @@ def create_app(settings=None, dist_dir=None):
         cover = cover_arg()
         result = _summary(area, start, end, today, settings, region=region, cover=cover)
         body = {**result, "synthetic": False, "data_version": dv,
-                "coverage_warning": coverage_warning}
+                "coverage_warning": coverage_warning,
+                "query": query_block(area, start, end, cover)}
         resp = _json_response(body, etag=dv)
         return store(resp)
 
@@ -246,12 +251,7 @@ def create_app(settings=None, dist_dir=None):
         cover = cover_arg()
         from firecal.analytics.series import seam_series
         result = seam_series(area, start, end, settings, region=region, cover=cover)
-        query = {"start": start, "end": end, "area_km2": area.area_km2(), "cover": cover}
-        if area.radius_km is not None:
-            query["point"] = [area.lat, area.lon]
-            query["radius_km"] = area.radius_km
-        else:
-            query["bbox"] = [area.w, area.s, area.e, area.n]
+        query = query_block(area, start, end, cover)
         body = {
             "query": query,
             **result,
@@ -283,7 +283,8 @@ def create_app(settings=None, dist_dir=None):
                 return _json_response({"error": "month must be an integer 1-12", "field": "month"}, status=400)
         result = map_cells(area, start, end, settings, month=month, region=region, cover=cover)
         resp = _json_response({**result, "data_version": dv,
-                               "coverage_warning": coverage_warning}, etag=dv)
+                               "coverage_warning": coverage_warning,
+                               "query": query_block(area, start, end, cover)}, etag=dv)
         return store(resp)
 
     @app.route("/api/hotspots")
@@ -346,7 +347,8 @@ def create_app(settings=None, dist_dir=None):
             for r in rows_df.itertuples(index=False, name=None)
         ]
         body = {"page": page, "page_size": page_size, "total": total,
-                "rows": rows, "data_version": dv}
+                "rows": rows, "data_version": dv,
+                "query": query_block(area, start, end, cover)}
         return _json_response(body, etag=dv)
 
     @app.route("/api/hotspots.csv")
