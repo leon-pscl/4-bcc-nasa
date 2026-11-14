@@ -1,4 +1,4 @@
-.card { border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
+﻿.card { border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
 .mapWrap { position: relative; aspect-ratio: 2 / 1; min-height: 280px; }
 .controls { position: absolute; top: 10px; left: 10px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
 .controlGroup { display: flex; flex-direction: column; border: 1px solid var(--ink); border-radius: var(--r-control); overflow: hidden; background: var(--surface); }
@@ -10,12 +10,18 @@
 .basemapBtn:last-child { border-right: none; }
 .basemapBtn[aria-pressed='true'] { background: var(--ink); color: #fff; }
 .jump { position: absolute; top: 10px; left: 64px; z-index: 1000; }
-.chip { position: absolute; top: 60px; left: 64px; z-index: 1000; background: var(--surface); border: 1px solid var(--line); padding: 4px 8px; font-size: 12px; font-weight: 600; border-radius: var(--r-control); }
+.chip { position: absolute; z-index: 1000; background: var(--surface); border: 1px solid var(--line); padding: 4px 8px; font-size: 12px; font-weight: 600; border-radius: var(--r-control); pointer-events: none; }
 .modeGroup { display: flex; border: 1px solid var(--ink); border-radius: var(--r-control); overflow: hidden; height: 44px; }
 .modeBtn { background: var(--surface); color: var(--ink); border: none; border-right: 1px solid var(--ink); padding: 0 10px; cursor: pointer; font-family: var(--font-sans); font-size: 13px; }
 .modeBtn:last-child { border-right: none; }
 .modeBtn[aria-pressed='true'] { background: var(--ink); color: #fff; }
 .hint { position: absolute; top: 108px; left: 64px; height: 44px; display: flex; align-items: center; padding: 0 12px; background: var(--surface); border: 1px solid var(--ink); border-radius: var(--r-control); font-family: var(--font-mono); font-size: 12px; z-index: 1000; }
+.footer { min-height: 44px; border-top: 1px solid var(--line); padding: 8px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+.footerLeft { flex: 1; }
+.linkBtn { background: none; border: none; padding: 0; margin-left: 8px; color: var(--ink); text-decoration: underline; cursor: pointer; font: inherit; }
+.legend { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.legendSwatch { width: 18px; height: 10px; display: inline-block; border: 1px solid rgba(0,0,0,0.1); }
+.agg { margin-left: auto; color: var(--muted); }
 .query { padding: var(--s4); border-top: 1px solid var(--line); }
 .row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: flex-end; }
 .label { display: flex; flex-direction: column; font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }

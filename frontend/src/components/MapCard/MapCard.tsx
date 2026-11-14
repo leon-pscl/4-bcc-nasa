@@ -1,10 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Rectangle, Circle, useMap, useMapEvents } from 'react-leaflet';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { MapContainer, TileLayer, Rectangle, Circle, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { useAppState } from '../../state/useAppState';
-import { useCoverage } from '../../api/hooks';
+import { useQueryParams, useMap as useMapData, useCalendar } from '../../api/hooks';
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
-import { formatNumber, formatDate } from '../../lib/format';
+import { formatNumber, formatDate, formatLat, formatLon } from '../../lib/format';
+import { COUNT_RAMP, countBins, countColor } from '../../lib/colors';
 import type { AppState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
@@ -12,6 +13,7 @@ type BoxDraft = { n: string; s: string; e: string; w: string };
 type PointDraft = { lat: string; lon: string; radius: string };
 const emptyBox: BoxDraft = { n: '', s: '', e: '', w: '' };
 const emptyPoint: PointDraft = { lat: '', lon: '', radius: '' };
+const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function DrawController({ drawing, onStart, onMove, onEnd, onCancel }: {
   drawing: boolean; onStart: (p: LatLng) => void; onMove: (p: LatLng) => void; onEnd: (p: LatLng) => void; onCancel: () => void;
@@ -42,9 +44,28 @@ function FitToBounds({ bounds }: { bounds: [[number, number], [number, number]] 
   return null;
 }
 
+function DraftChip({ map, bounds, label }: { map: LeafletMap | null; bounds: [[number, number], [number, number]] | null; label: string | null }) {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!map || !bounds || !label) { setPos(null); return; }
+    const update = () => {
+      const p = map.latLngToContainerPoint([bounds[1][0], bounds[0][1]]);
+      setPos({ left: Math.max(8, p.x), top: Math.max(8, p.y - 34) });
+    };
+    update();
+    map.on('move zoom resize', update);
+    return () => { map.off('move zoom resize', update); };
+  }, [bounds, label, map]);
+  if (!pos || !label) return null;
+  return <div className={styles.chip} style={{ left: pos.left, top: pos.top }}>{label}</div>;
+}
+
 export default function MapCard() {
   const { state, dispatch } = useAppState();
-  const { data: coverage } = useCoverage();
+  const { params, coverage } = useQueryParams(state);
+  const monthParam = state.focus ?? undefined;
+  const { data: mapData } = useMapData(params, monthParam);
+  const { data: calendar } = useCalendar(params);
   const [mode, setMode] = useState<'box' | 'point'>('box');
   const [boxDraft, setBoxDraft] = useState<BoxDraft | null>(null);
   const [pointDraft, setPointDraft] = useState<PointDraft>(emptyPoint);
@@ -162,6 +183,35 @@ export default function MapCard() {
     if (map && fitBounds) map.fitBounds(fitBounds, { padding: [20, 20] });
   }
 
+  const mapBins = useMemo(() => {
+    if (!mapData?.cells?.length) return [];
+    return countBins(mapData.cells.map((c) => c.value));
+  }, [mapData]);
+
+  const focus = state.focus;
+  const focusCount = useMemo(() => {
+    if (!focus || !calendar) return null;
+    const [yStr, mStr] = focus.split('-');
+    const yi = calendar.years.indexOf(Number(yStr));
+    const mi = Number(mStr) - 1;
+    if (yi < 0 || mi < 0) return null;
+    const v = calendar.values[yi]?.[mi];
+    if (v == null) return null;
+    return v;
+  }, [focus, calendar]);
+
+  const footerText = (() => {
+    if (focus) {
+      const [yStr, mStr] = focus.split('-');
+      const label = `${MONTH_FULL[Number(mStr) - 1]} ${yStr}`;
+      const count = focusCount != null ? ` (${formatNumber(focusCount)} hotspots)` : '';
+      return { label: `${label}${count}`, focused: true };
+    }
+    return { label: `the full record, ${state.start.slice(0,4)}–${state.end.slice(0,4)}`, focused: false };
+  })();
+
+  const draftShapeBounds = mode === 'box' ? rectBounds : circleBounds;
+
   return (
     <div className={styles.card}>
       <div className={styles.mapWrap}>
@@ -170,14 +220,27 @@ export default function MapCard() {
             ? <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             : <TileLayer attribution="Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
           {coverage?.regions.map((r) => (
-            <Rectangle key={r.name} bounds={[[r.bbox[1], r.bbox[0]], [r.bbox[3], r.bbox[2]]]} pathOptions={{ color: '#6b6b6d', weight: 1, dashArray: '4 4', fill: false }} />
+            <Rectangle key={r.name} bounds={[[r.bbox[1], r.bbox[0]], [r.bbox[3], r.bbox[2]]]} pathOptions={{ color: '#6b6b6d', weight: 1, dashArray: '4 4', fill: false }}>
+              <Tooltip>{r.label}</Tooltip>
+            </Rectangle>
           ))}
+          {mapData?.cells.map((c, i) => {
+            const g = mapData.grid_deg;
+            const half = g / 2;
+            const color = countColor(c.value, mapBins);
+            return (
+              <Rectangle key={`${c.lat}-${c.lon}-${i}`} bounds={[[c.lat - half, c.lon - half], [c.lat + half, c.lon + half]]}
+                pathOptions={{ color, weight: 0.5, fillColor: color, fillOpacity: 0.7 }}>
+                <Popup>{`${formatNumber(c.value)} hotspots · ${formatLat(c.lat)}, ${formatLon(c.lon)}`}</Popup>
+              </Rectangle>
+            );
+          })}
           {mode === 'box' && rectBounds && <Rectangle bounds={rectBounds} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
           {mode === 'point' && pointValid && <Circle center={[pLat, pLon]} radius={pRad * 1000} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
           <FitToBounds bounds={fitBounds} />
           <DrawController drawing={drawing && mode === 'box'} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
         </MapContainer>
-        {areaLabel && fitBounds && <div className={styles.chip}>{areaLabel}</div>}
+        <DraftChip map={map} bounds={draftShapeBounds} label={areaLabel} />
         <div className={styles.controls}>
           <div className={styles.controlGroup}>
             <button type="button" className={styles.controlBtn} aria-label="Zoom in" onClick={() => map?.zoomIn()}>+</button>
@@ -203,6 +266,15 @@ export default function MapCard() {
         </div>
         {drawing && <div className={styles.hint}>Drag on the map · Esc to cancel</div>}
       </div>
+
+      <div className={styles.footer}>
+        <div className={styles.footerLeft}>
+          <span>Map shows <strong>{footerText.label}</strong>{footerText.focused ? <> <button type="button" className={styles.linkBtn} onClick={() => dispatch({ type: 'patch', patch: { focus: undefined } })}>Show full record</button></> : null}</span>
+        </div>
+        <div className={styles.legend}><span>Hotspots per cell</span>{COUNT_RAMP.map((c) => <span key={c} className={styles.legendSwatch} style={{ background: c }} />)}<span>fewer to more</span></div>
+        {mapData?.aggregated_to != null ? <div className={styles.agg}>Shown on a coarser {mapData.aggregated_to}° grid to keep the map fast.</div> : null}
+      </div>
+
       <form className={styles.query} onSubmit={(e) => { e.preventDefault(); analyze(); }}>
         <div className={styles.row}>
           <div>
