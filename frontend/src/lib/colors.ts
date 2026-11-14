@@ -47,7 +47,7 @@ export function countColor(value: number, bins: number[]): string {
 }
 
 export function binLabels(bins: number[]): string[] {
-  // bins are 7 quantile thresholds; color i covers (b[i-1], b[i]], last covers > b[5]
+  // bins are 7 log-spaced thresholds; color i covers (b[i-1], b[i]], last covers > b[5]
   const b = bins.map((x) => Math.max(1, Math.round(x)));
   const labels: string[] = [];
   let lo = 1;
