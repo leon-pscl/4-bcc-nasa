@@ -444,52 +444,66 @@ def rebuild(settings, region=None, state=None):
     ds_state = state.setdefault(HARMONIZED, {})
     cal_state = state.setdefault("calibration", {})
     con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='4GB'")
+    con.execute("PRAGMA threads=2")
+    con.execute("PRAGMA memory_limit='1500MB'")
+    con.execute("PRAGMA preserve_insertion_order=false")
+    con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
 
     cd = read_dataset(settings, "celldays", [region] if region else None)
-    shrink_m = getattr(settings, "SHRINK_M", 0)
     cal_years = settings.CALIBRATION_YEARS
-    # three platform -> SNPP factors: Aqua (history), NOAA-20 and NOAA-21 (continuity)
-    platforms = [("Aqua", cal_years), ("NOAA20", (2018, 2025)), ("NOAA21", (2023, 2026))]
-    views = []
-    for i, (platform, years) in enumerate(platforms):
-        raw = calibration_sql(cd, years, settings.MIN_CALIBRATION_CELLDAYS, shrink_m,
-                              platform=platform, reference="SNPP")
-        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_raw_{i} AS {raw}")
-        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_all_{i} AS "
-                    f"{calibration_all_sql(f'cal_raw_{i}', settings.MIN_CALIBRATION_CELLDAYS, shrink_m, platform, 'SNPP')}")
-        views.append(f"cal_raw_{i}")
-        views.append(f"cal_all_{i}")
-    con.execute("CREATE OR REPLACE TEMP VIEW cal AS "
-                + " UNION ALL ".join(f"SELECT * FROM {v}" for v in views))
-    # cal already carries the ALL month-0 row (from calibration_all_sql)
-    con.execute("CREATE OR REPLACE TEMP VIEW cal_final AS SELECT * FROM cal")
-    from firecal.harmonize.checks import check_calibration_sql
-    check_calibration_sql(con, "cal_final")
 
-    # write calibration.parquet (single file, all regions; replace this region's rows)
-    cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
-    os.makedirs(settings.DATA_PROCESSED, exist_ok=True)
-    if region and os.path.exists(cal_path):
-        cols = [r[0] for r in con.execute(
-            "DESCRIBE SELECT * FROM read_parquet(?)",
-            [cal_path.replace(os.sep, '/')]).fetchall()]
-        if "platform" not in cols:
-            # legacy single-sensor calibration file (Aqua -> SNPP only)
-            new_sql = (f"SELECT * FROM cal_final UNION ALL "
-                       f"SELECT region, 'Aqua' AS platform, 'SNPP' AS reference, tile_id, "
-                       f"CAST(month AS SMALLINT) AS month, k, "
-                       f"CAST(modis_celldays AS BIGINT), CAST(viirs_celldays AS BIGINT), level "
-                       f"FROM read_parquet('{cal_path}') WHERE region != '{region}'")
-        else:
-            new_sql = (f"SELECT * FROM cal_final UNION ALL "
-                       f"SELECT * FROM read_parquet('{cal_path}') WHERE region != '{region}'")
+    cal_fp = fingerprint(settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS,
+                         settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region,
+                         PIPELINE_VERSION)
+    cal_changed = (cal_state.get(region, {}).get("fingerprint") != cal_fp) if region else True
+    if (not cal_changed) and os.path.exists(os.path.join(settings.DATA_PROCESSED, "calibration.parquet")):
+        # reuse existing calibration when its inputs are unchanged (avoids re-scanning
+        # 19M celldays rows on every daily update)
+        cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_final AS "
+                    f"SELECT * FROM read_parquet('{cal_path}') WHERE region = '{region}'")
     else:
-        new_sql = "SELECT * FROM cal_final"
-    tmp = cal_path + ".tmp"
-    con.execute(f"COPY ({new_sql}) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)")
-    os.replace(tmp, cal_path)
+        # three platform -> SNPP factors: Aqua (history), NOAA-20 and NOAA-21 (continuity)
+        shrink_m = getattr(settings, "SHRINK_M", 0)
+        platforms = [("Aqua", cal_years), ("NOAA20", (2018, 2025)), ("NOAA21", (2023, 2026))]
+        views = []
+        for i, (platform, years) in enumerate(platforms):
+            raw = calibration_sql(cd, years, settings.MIN_CALIBRATION_CELLDAYS, shrink_m,
+                                  platform=platform, reference="SNPP")
+            con.execute(f"CREATE OR REPLACE TEMP VIEW cal_raw_{i} AS {raw}")
+            con.execute(f"CREATE OR REPLACE TEMP VIEW cal_all_{i} AS "
+                        f"{calibration_all_sql(f'cal_raw_{i}', settings.MIN_CALIBRATION_CELLDAYS, shrink_m, platform, 'SNPP')}")
+            views.append(f"cal_raw_{i}")
+            views.append(f"cal_all_{i}")
+        con.execute("CREATE OR REPLACE TEMP VIEW cal AS "
+                    + " UNION ALL ".join(f"SELECT * FROM {v}" for v in views))
+        # cal already carries the ALL month-0 row (from calibration_all_sql)
+        con.execute("CREATE OR REPLACE TEMP VIEW cal_final AS SELECT * FROM cal")
+        from firecal.harmonize.checks import check_calibration_sql
+        check_calibration_sql(con, "cal_final")
+    
+        # write calibration.parquet (single file, all regions; replace this region's rows)
+        cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
+        os.makedirs(settings.DATA_PROCESSED, exist_ok=True)
+        if region and os.path.exists(cal_path):
+            cols = [r[0] for r in con.execute(
+                "DESCRIBE SELECT * FROM read_parquet(?)",
+                [cal_path.replace(os.sep, '/')]).fetchall()]
+            if "platform" not in cols:
+                # legacy single-sensor calibration file (Aqua -> SNPP only)
+                new_sql = (f"SELECT * FROM cal_final UNION ALL "
+                           f"SELECT region, 'Aqua' AS platform, 'SNPP' AS reference, tile_id, "
+                           f"CAST(month AS SMALLINT) AS month, k, "
+                           f"CAST(modis_celldays AS BIGINT), CAST(viirs_celldays AS BIGINT), level "
+                           f"FROM read_parquet('{cal_path}') WHERE region != '{region}'")
+            else:
+                new_sql = (f"SELECT * FROM cal_final UNION ALL "
+                           f"SELECT * FROM read_parquet('{cal_path}') WHERE region != '{region}'")
+        else:
+            new_sql = "SELECT * FROM cal_final"
+        tmp = cal_path + ".tmp"
+        con.execute(f"COPY ({new_sql}) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+        os.replace(tmp, cal_path)
 
     cal_fp = fingerprint(settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS,
                          settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region,
@@ -499,7 +513,10 @@ def rebuild(settings, region=None, state=None):
     def _check_harmonized_staging(con, tmp_dir):
         # check (b) on the staging copy: one row per (region, cell, date)
         from firecal.harmonize.checks import check_harmonized_sql
-        root = f"read_parquet('{tmp_dir.as_posix()}/**/*.parquet')"
+        import os, sys
+        if not any(tmp_dir.rglob("*.parquet")):
+            return  # empty partition (no rows for this year) is valid
+        root = f"read_parquet('{tmp_dir.as_posix()}/region=*/year=*/*.parquet')"
         check_harmonized_sql(con, root)
 
     for key, meta in sorted(state.get("celldays", {}).items()):

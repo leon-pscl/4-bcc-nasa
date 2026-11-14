@@ -7,10 +7,10 @@ import time
 
 from firecal.config import Settings
 from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
-                             acquire_writer_lock, release_writer_lock)
+                             acquire_writer_lock, release_writer_lock, validation_path)
 
 
-def main():
+def main(lock_fd=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--region", default=None)
     parser.add_argument("--out-validation", default=None)

@@ -74,5 +74,5 @@ class FirmsClient:
         return self._request(path, validate_csv=False)
 
     def key_status(self):
-        path = f"/api/map_key_status/{self.map_key}"
+        path = f"/mapserver/mapkey_status/?MAP_KEY={self.map_key}"
         return self._request(path, validate_csv=False)

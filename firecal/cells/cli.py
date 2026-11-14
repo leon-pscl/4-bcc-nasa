@@ -11,7 +11,7 @@ from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versio
                              acquire_writer_lock, release_writer_lock)
 
 
-def main():
+def main(lock_fd=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--region", default=None)
     parser.add_argument("--years", nargs="*", type=int, default=None)

@@ -23,6 +23,7 @@ or a contract changes. Newest last.
 | D14 | 2026-11-14 | **Shrinkage calibration.** `k_month = (viirs + 30*k_tile)/(aqua + 30)`, `k_tile = (viirs_tile + 30*k_region)/(aqua_tile + 30)` (`SHRINK_M = 30`). | Raw ratios gave tile-month k of 0.53–26.19; marginal months dominated. m=30 gave the best held-out r/bias/MAPE of {0, 30, 100, 300}. The 0.53–26.19 was across all tile-months; per-tile medians ranged 1.56–26.19. |
 | D15 | 2026-11-14 | **NOAA-20/21 continuity after S-NPP ends.** No SNPP on a date -> NOAA-20×k(NOAA-20→SNPP), else NOAA-21×k, else Aqua×k gap fill. New C4 bases `viirs_noaa20` / `viirs_noaa21`. `latest_date` is the last harmonized day. | S-NPP ends 2026-11-02; "this month vs median" would otherwise rest on nothing. Overlap: NOAA-20 k≈1.017, NOAA-21 k≈1.041 (≈1:1). |
 | D16 | 2026-11-14 | **500,000 km² limit stays** (`MAX_AREA_KM2 = 500_000`); the map card shows the warning again. | O1 closed by the owner. Keeps the map under `MAX_MAP_CELLS`; matches the starter-area design. |
+| D17 | 2026-11-14 | **Key status (O2) uses `/mapserver/mapkey_status/?MAP_KEY=...`.** Reports `current_transactions` / `transaction_limit` / `transaction_interval`; logged (numbers only) before long runs. | The documented `/api/map_key_status/{key}` path returns 400 "Invalid API call." and the working page uses `/mapserver/mapkey_status/?MAP_KEY=`. The key is never logged or printed (instructions.md §3, rule 8). |
 
 ## Open
 
