@@ -230,7 +230,7 @@ export default function MapCard() {
             const color = countColor(c.value, mapBins);
             return (
               <Rectangle key={`${c.lat}-${c.lon}-${i}`} bounds={[[c.lat - half, c.lon - half], [c.lat + half, c.lon + half]]}
-                pathOptions={{ color, weight: 0.5, fillColor: color, fillOpacity: 0.7 }}>
+                pathOptions={{ color, weight: 0.5, fillColor: color, fillOpacity: 0.75 }}>
                 <Popup>{`${formatNumber(c.value)} hotspots · ${formatLat(c.lat)}, ${formatLon(c.lon)}`}</Popup>
               </Rectangle>
             );
