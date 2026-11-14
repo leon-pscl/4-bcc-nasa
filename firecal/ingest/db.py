@@ -235,6 +235,7 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
         sql = build_sql(con, path, sensor, region, bbox)
         file_key = fingerprint(fp)[:16]
         import tempfile as _tf
+        os.makedirs(staging_root, exist_ok=True)
         stage_dir = _tf.mkdtemp(prefix="_part_", dir=staging_root)
         os.makedirs(stage_dir, exist_ok=True)
         # one scan, partitioned by year

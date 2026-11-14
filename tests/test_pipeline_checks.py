@@ -107,7 +107,7 @@ def test_harmonized_staging_failure_keeps_old_partition_and_state(tmp_path, monk
     from firecal.dataset import load_state, save_state
 
     part = os.path.join(settings.DATA_PROCESSED, "harmonized_daily",
-                        "region=testreg", "year=2015")
+                        "region=testreg", "year=2018")
     before_files = {f: open(os.path.join(part, f), "rb").read()
                     for f in os.listdir(part) if f.endswith(".parquet")}
     assert before_files

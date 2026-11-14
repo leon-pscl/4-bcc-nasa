@@ -450,7 +450,6 @@ def rebuild(settings, region=None, state=None):
     con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
 
     cd = read_dataset(settings, "celldays", [region] if region else None)
-    print("CELLDAYS COUNT BY YEAR:", con.execute(f"SELECT EXTRACT(year FROM date_local)::INTEGER, COUNT(*) FROM {cd} GROUP BY 1 ORDER BY 1").fetchall(), file=__import__('sys').stderr)
     cal_years = settings.CALIBRATION_YEARS
 
     cal_fp = fingerprint(settings.CALIBRATION_YEARS, settings.MIN_CALIBRATION_CELLDAYS,
@@ -465,6 +464,7 @@ def rebuild(settings, region=None, state=None):
                     f"SELECT * FROM read_parquet('{cal_path}') WHERE region = '{region}'")
     else:
         # three platform -> SNPP factors: Aqua (history), NOAA-20 and NOAA-21 (continuity)
+        shrink_m = getattr(settings, "SHRINK_M", 0)
         platforms = [("Aqua", cal_years), ("NOAA20", (2018, 2025)), ("NOAA21", (2023, 2026))]
         views = []
         for i, (platform, years) in enumerate(platforms):
@@ -514,10 +514,8 @@ def rebuild(settings, region=None, state=None):
         # check (b) on the staging copy: one row per (region, cell, date)
         from firecal.harmonize.checks import check_harmonized_sql
         import os, sys
-        print("STAGING DIR:", tmp_dir, "exists:", tmp_dir.exists(), file=sys.stderr)
-        for root, dirs, files in os.walk(tmp_dir):
-            for f in files:
-                print("  ", os.path.join(root, f), file=sys.stderr)
+        if not any(tmp_dir.rglob("*.parquet")):
+            return  # empty partition (no rows for this year) is valid
         root = f"read_parquet('{tmp_dir.as_posix()}/region=*/year=*/*.parquet')"
         check_harmonized_sql(con, root)
 
@@ -531,9 +529,6 @@ def rebuild(settings, region=None, state=None):
             continue
         harm = harmonized_sql(cd, "cal_final", settings.SERIES_START, settings.SWITCH_DATE)
         part_sql = f"SELECT * FROM ({harm}) WHERE year = {year}"
-        print("HARM TOTAL ROWS:", con.execute(f"SELECT COUNT(*) FROM ({harm})").fetchone()[0], file=__import__('sys').stderr)
-        print("HARM YEARS:", con.execute(f"SELECT DISTINCT year FROM ({harm})").fetchall(), file=__import__('sys').stderr)
-        print("PART_SQL ROWS:", con.execute(f"SELECT COUNT(*) FROM ({harm}) WHERE year = {year}").fetchone()[0], file=__import__('sys').stderr)
         # staging build + check (b) before any swap; a failure leaves the old
         # partition untouched and nothing in the state file is updated
         write_partition(con, part_sql, settings, HARMONIZED, r, year,

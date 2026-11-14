@@ -156,7 +156,12 @@ def write_partition(con, sql, settings, name, region, year, post_check=None):
         raise
     target = root / f"region={region}" / f"year={year}"
     if target.exists():
-        shutil.rmtree(target)
+        for old in target.glob("*.parquet"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True, exist_ok=True)
     for f in tmp.rglob("*.parquet"):
         os.replace(f, target / f.name)
