@@ -228,6 +228,32 @@ def create_app(settings=None, dist_dir=None):
         resp = _json_response(body, etag=dv)
         return store(resp)
 
+    @app.route("/api/series")
+    def series():
+        cached = full_area("series")
+        if cached is not None:
+            return cached
+        area, start, end, today, region, coverage_warning = area_args()
+        dv = request.parent_etag
+        from firecal.analytics.series import seam_series
+        result = seam_series(area, start, end, settings, region=region)
+        query = {"start": start, "end": end, "area_km2": area.area_km2()}
+        if area.radius_km is not None:
+            query["point"] = [area.lat, area.lon]
+            query["radius_km"] = area.radius_km
+        else:
+            query["bbox"] = [area.w, area.s, area.e, area.n]
+        body = {
+            "query": query,
+            **result,
+            "latest_data_date": str(today),
+            "synthetic": False,
+            "coverage_warning": coverage_warning,
+            "data_version": dv,
+        }
+        resp = _json_response(body, etag=dv)
+        return store(resp)
+
     @app.route("/api/map")
     def map():
         cached = full_area("map")
