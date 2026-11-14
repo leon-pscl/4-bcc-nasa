@@ -527,7 +527,8 @@ run rebuilds it. Before any of this, a writer takes an OS lock (`_writer.lock` i
 of the process; a second writer exits immediately with a clear message, and the OS releases
 the lock however the process exits — there is no PID check and no stale lock to clean up.
 A daily update only rebuilds the
-current year's partitions. The column tables below describe the rows inside a partition.
+current year's partitions. (Cell cover (C9, `cell_cover`) is a year-only Hive partition,
+`cell_cover/year=YYYY/part.parquet`, because cover is global to a cell regardless of region.) The column tables below describe the rows inside a partition.
 Nothing loads a whole dataset into pandas: heavy steps run in DuckDB, or one partition at a
 time.
 
@@ -763,6 +764,27 @@ has cell-days that day, else `NOAA20`, else `NOAA21`, else `Aqua`. The export an
 `/api/hotspots` join it instead of recomputing the platform per date (it replaced the
 per-request `DISTINCT platform, date_local` over `celldays`). If the file is missing, the
 export builds the same table on the fly from `celldays` (slow but correct).
+
+### C9 `cell_cover` (written by the landcover backfill, `python -m firecal.landcover.ingest`)
+
+Cover classes from IGBP Type 1: 1-5 = forest, 12/14 = farmland, 6-11 = other_vegetation,
+everything else (13,15,16,17,255) = other. API parameter `cover=all|forest|farmland|other` on
+the area endpoints (calendar, summary, map, hotspots, the CSV export, series). A fire on
+date D is labelled with the cover of **year(D)-1**; the 2024 granule is used for 2025+
+(2025 and later), 2002 for 2003 if needed. `all` is the unfiltered default.
+
+### C9 layout and columns
+
+```
+data/processed/cell_cover/year=YYYY/part.parquet
+```
+
+One row per `(cell_lat_idx, cell_lon_idx, year)`: `{cell_lat_idx, cell_lon_idx, year,
+cover_class, forest_pct, crop_pct, majority_confidence}`. `forest_pct` / `crop_pct` sum the
+percent bands of the IGBP classes in each 0.05 degree cell; `majority_confidence` is the
+majority-class confidence byte as-is (0..100, 255 stored as 0). Only cells in loaded regions
+are stored. Partitioned by `year` Hive-style, rebuilt by `build_cell_cover` (HDF4 read via
+pyhdf, deliberately not in requirements.txt).
 
 ---
 

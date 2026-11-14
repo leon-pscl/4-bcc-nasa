@@ -86,6 +86,13 @@ SELECT
     CAST(EXTRACT(year FROM acq_date) AS INTEGER) AS year
 FROM mapped
 WHERE latitude >= {s} AND latitude <= {n} AND longitude >= {w} AND longitude <= {e}
+-- the manual SP archive files carry a few byte-identical rows twice; uid is
+-- unique per observation, so dedup on the full output keeps SP-vs-NRT rows
+-- (which differ in `processing`) while collapsing literal copies
+-- the manual SP archive files carry a few byte-identical rows twice; uid is
+-- unique per observation, so dedup on uid (SP preferred) collapses literal
+-- copies and keeps the SP version when both exist in one file
+QUALIFY ROW_NUMBER() OVER (PARTITION BY uid ORDER BY CASE WHEN processing = 'SP' THEN 0 ELSE 1 END) = 1
 """
 
 

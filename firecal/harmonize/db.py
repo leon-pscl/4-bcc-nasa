@@ -171,6 +171,26 @@ def harmonized_sql(cd, cal_rel, series_start, switch_date):
       QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference
                                  ORDER BY CASE level WHEN 'all' THEN 1 ELSE 2 END) = 1
     ),
+    k_t AS (
+      SELECT region, platform, reference, tile_id, month, k FROM {cal_rel}
+      WHERE platform = 'Terra' AND reference = 'Aqua'
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference, tile_id, month
+                                 ORDER BY CASE level WHEN 'tile_month' THEN 1
+                                                     WHEN 'tile' THEN 2
+                                                     WHEN 'all_month' THEN 3 ELSE 4 END) = 1
+    ),
+    k_t_am AS (
+      SELECT region, platform, reference, month, k FROM {cal_rel}
+      WHERE platform = 'Terra' AND reference = 'Aqua' AND tile_id = 'ALL' AND month BETWEEN 1 AND 12
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference, month
+                                 ORDER BY CASE level WHEN 'all_month' THEN 1 ELSE 2 END) = 1
+    ),
+    k_t_all AS (
+      SELECT region, platform, reference, k FROM {cal_rel}
+      WHERE platform = 'Terra' AND reference = 'Aqua' AND tile_id = 'ALL' AND month = 0
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY region, platform, reference
+                                 ORDER BY CASE level WHEN 'all' THEN 1 ELSE 2 END) = 1
+    ),
     aqua AS (
       SELECT cd.*, COALESCE(km.k, km_m.k, ka.k) AS k
       FROM cd
@@ -202,6 +222,33 @@ def harmonized_sql(cd, cal_rel, series_start, switch_date):
       WHERE cd.platform = 'NOAA21'
     ),
     snpp AS (SELECT * FROM cd WHERE platform = 'SNPP'),
+    all_days AS (SELECT DISTINCT region, date_local FROM cd),
+    aqua_day AS (SELECT region, date_local, COUNT(*)::INTEGER AS n FROM cd WHERE platform = 'Aqua' GROUP BY 1,2),
+    aqua_spine AS (
+      SELECT d.region, d.date_local, COALESCE(a.n, 0) AS n
+      FROM all_days d
+      LEFT JOIN aqua_day a ON a.region = d.region AND a.date_local = d.date_local
+    ),
+    gap AS (
+      SELECT region, date_local FROM (
+        SELECT region, date_local, n,
+               quantile_cont(n, 0.5) OVER (PARTITION BY region ORDER BY date_local
+                                          ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) AS a_med
+        FROM aqua_spine
+      ) WHERE a_med >= 5 AND n < 0.1 * a_med
+    ),
+    terra AS (
+      SELECT cd.*, COALESCE(km.k, km_m.k, ka.k) AS k
+      FROM cd
+      LEFT JOIN k_t km ON km.region=cd.region AND km.platform='Terra' AND km.reference='Aqua'
+                      AND km.tile_id=cd.tile_id AND km.month=cd.month
+      LEFT JOIN k_t_am km_m ON km_m.region=cd.region AND km_m.platform='Terra'
+                           AND km_m.reference='Aqua' AND km_m.month=cd.month
+      LEFT JOIN k_t_all ka ON ka.region=cd.region AND ka.platform='Terra' AND ka.reference='Aqua'
+      WHERE cd.platform = 'Terra'
+        AND date_local < DATE '{switch_date}'
+        AND (cd.region, date_local) IN (SELECT region, date_local FROM gap)
+    ),
     snpp_dates AS (SELECT DISTINCT region, date_local FROM snpp),
     n20_dates AS (SELECT DISTINCT region, date_local FROM n20),
     n21_dates AS (SELECT DISTINCT region, date_local FROM n21),
@@ -210,6 +257,8 @@ def harmonized_sql(cd, cal_rel, series_start, switch_date):
            CAST(EXTRACT(year FROM date_local) AS INTEGER) AS year,
            k AS value, 'modis_scaled' AS basis
       FROM aqua WHERE date_local < DATE '{switch_date}'
+        AND (region, date_local) NOT IN (
+              SELECT DISTINCT region, date_local FROM terra)
     UNION ALL
     SELECT region, cell_lat_idx, cell_lon_idx, tile_id, date_local,
            CAST(EXTRACT(year FROM date_local) AS INTEGER) AS year,
@@ -228,6 +277,11 @@ def harmonized_sql(cd, cal_rel, series_start, switch_date):
       FROM n21 WHERE date_local >= DATE '{switch_date}'
         AND (region, date_local) NOT IN (SELECT region, date_local FROM snpp_dates)
         AND (region, date_local) NOT IN (SELECT region, date_local FROM n20_dates)
+    UNION ALL
+    SELECT region, cell_lat_idx, cell_lon_idx, tile_id, date_local,
+           CAST(EXTRACT(year FROM date_local) AS INTEGER) AS year,
+           k AS value, 'terra_gapfill' AS basis
+      FROM terra
     UNION ALL
     SELECT region, cell_lat_idx, cell_lon_idx, tile_id, date_local,
            CAST(EXTRACT(year FROM date_local) AS INTEGER) AS year,
@@ -516,6 +570,37 @@ def rebuild(settings, region=None, state=None):
                          settings.SHRINK_M if hasattr(settings, "SHRINK_M") else 0, region,
                          PIPELINE_VERSION)
     rebuilt = []
+
+    # Terra gap-fill factors for 2003-2011 days where Aqua read almost nothing but
+    # Terra was up (D20). Fitted over 2003-2011 against Aqua, same hierarchy/shrinkage.
+    shrink_m = getattr(settings, "SHRINK_M", 0)
+    terra_sql = calibration_sql(cd, (2003, 2011), settings.MIN_CALIBRATION_CELLDAYS,
+                                shrink_m, platform="Terra", reference="Aqua")
+    cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
+    try:
+        have_terra = con.execute(
+            f"SELECT COUNT(*) FROM read_parquet('{cal_path.replace(os.sep, '/')}') "
+            f"WHERE platform = 'Terra' AND reference = 'Aqua'"
+            + (f" AND region = '{region}'" if region else "")).fetchone()[0] > 0
+    except Exception:
+        have_terra = False
+    if not have_terra:
+        cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_terra AS {terra_sql}")
+        if os.path.exists(cal_path):
+            new_sql = (f"SELECT * FROM read_parquet('{cal_path.replace(os.sep, '/')}') "
+                       f"WHERE NOT (platform = 'Terra' AND reference = 'Aqua'"
+                       + (f" AND region = '{region}'" if region else "") + ")"
+                       f" UNION ALL SELECT * FROM cal_terra")
+        else:
+            new_sql = "SELECT * FROM cal_terra"
+        tmp = cal_path + ".terra"
+        con.execute(f"COPY ({new_sql}) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+        os.replace(tmp, cal_path)
+        # rebuild the temp view over the merged file so harmonized sees terra rows
+        con.execute(f"CREATE OR REPLACE TEMP VIEW cal_final AS "
+                    f"SELECT * FROM read_parquet('{cal_path.replace(os.sep, '/')}')"
+                    + (f" WHERE region = '{region}'" if region else ""))
 
     def _check_harmonized_staging(con, tmp_dir):
         # check (b) on the staging copy: one row per (region, cell, date)
