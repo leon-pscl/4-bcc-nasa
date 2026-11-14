@@ -732,6 +732,16 @@ Other endpoints:
   regions.json], data_version}`.
 - `GET /api/methods?region=<name>` returns that region's calibration summary plus
   `validation/<region>.json`.
+- `GET /api/series?bbox=W,S,E,N&start=YYYY-MM-DD&end=YYYY-MM-DD` (or point + radius_km)
+  returns the seam view for the area: `months` (YYYY-MM list), raw `aqua`, `snpp`,
+  `noaa20`, `noaa21` cell-days per month, `aqua_k` (Aqua cell-days x k, sensor-outage
+  days excluded), `harmonized` (monthly sum of C4 `value`), `switch_date`, and
+  `outage_days` (days since the switch where exactly one of Aqua/SNPP read at least one
+  cell-day in the region, within the query range). `validation` carries the same
+  definitions as the rebuild-time validation but for the requested area: Pearson r,
+  bias %, and per-year bias of Aqua x k vs S-NPP on the overlap months (both sensors read
+  region-wide, VIIRS >= 10 cell-days/month). Sensor-outage days are excluded on both
+  sides. Uses the same response cache, ETag, and 4xx/422 conventions.
 - `GET /health` returns `{status, data_version, regions: [{name, latest_date, age_days}]}`.
   `status` is `"stale"` when a region's latest date is more than 3 days old.
 

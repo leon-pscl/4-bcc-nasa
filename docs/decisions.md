@@ -25,8 +25,9 @@ or a contract changes. Newest last.
 | D16 | 2026-11-14 | **500,000 km² limit stays** (`MAX_AREA_KM2 = 500_000`); the map card shows the warning again. | O1 closed by the owner. Keeps the map under `MAX_MAP_CELLS`; matches the starter-area design. |
 | D17 | 2026-11-14 | **Key status (O2) uses `/mapserver/mapkey_status/?MAP_KEY=...`.** Reports `current_transactions` / `transaction_limit` / `transaction_interval`; logged (numbers only) before long runs. | The documented `/api/map_key_status/{key}` path returns 400 "Invalid API call." and the working page uses `/mapserver/mapkey_status/?MAP_KEY=`. The key is never logged or printed (instructions.md §3, rule 8). |
 
+| D18 | 2026-11-14 | **Symmetric sensor-outage exclusion in validation (`monthly_sql`).** A day where exactly one of Aqua/SNPP read at least one cell-day in the region is dropped from BOTH sides of the ratio (Aqua-down days: 2020-08-18..2020-09-02, plus 31 other days in 2012-2026). VIIRS months no longer keep the old MODIS-only exclusion alone; the S-NPP sum now counts only non-outage days too. | Before this, Aug 2020 read as Aqua x k = 4,438 vs VIIRS = 14,291 (-69%); much of the gap was Aqua simply not reporting (0 cell-days region-wide for 14 days while SNPP read thousands). After: VIIRS = 7,133 over the common days, bias -37.65%. Validation years come out: 2020 -9.83% -> -8.59%, 2021 -2.51% -> -2.46%, 2018/2019 unchanged. |
+| D19 | 2026-11-14 | **New `/api/series` endpoint (the seam view).** Monthly raw Aqua / S-NPP / NOAA-20 / NOAA-21 cell-days, Aqua x k, the harmonized sum, the switch_date, the outage-day list since the switch, and an area-validation block (Pearson r, bias %, per-year bias of the overlap months, excluding outage days on both sides, VIIRS >= 10 cell-days/month). Region-wide outage days; bbox or point. | A teammate's prototype asked for a seam chart Aqua-vs-VIIRS to sanity-check the harmonization; the numbers must come from the same definitions as the rebuild-time validation. |
+
 ## Open
 
-| ID | Question | Notes |
-|---|---|---|
-| O2 | The FIRMS key-status URL | The guessed URL returns "Invalid API call". Get the real one from the "view status" link in the MAP_KEY email (Stage S). |
+None (O2 closed by D17, O1 by D16).
