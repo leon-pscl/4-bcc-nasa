@@ -67,13 +67,20 @@ def geotiff_granule(tmp_path):
     # right half: IGBP 12 (cropland) -> farmland
     arr[:, :100] = 5
     arr[:, 100:] = 12
-    path = str(tmp_path / "MCD12Q1_LC_Type1_2019_001_2019_365.tif")
+    path = str(tmp_path / "MCD12Q1.061_LC_Type1_doy2019001000000_aid0001.tif")
     transform = from_origin(left, top, px, px)
     with rasterio.open(
         path, "w", driver="GTiff", height=nrows, width=ncols, count=1,
         dtype="uint8", crs=CRS.from_epsg(4326), transform=transform,
     ) as dst:
         dst.write(arr, 1)
+    qc_path = str(tmp_path / "MCD12Q1.061_QC_doy2019001000000_aid0001.tif")
+    qc = np.zeros((nrows, ncols), dtype=np.uint8)  # QC == 0: confidently-classified land
+    with rasterio.open(
+        qc_path, "w", driver="GTiff", height=nrows, width=ncols, count=1,
+        dtype="uint8", crs=CRS.from_epsg(4326), transform=transform,
+    ) as dst:
+        dst.write(qc, 1)
     return path
 
 

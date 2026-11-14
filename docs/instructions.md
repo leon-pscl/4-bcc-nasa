@@ -781,10 +781,11 @@ data/processed/cell_cover/region=<name>/year=YYYY/part-<region>.parquet
 
 One row per `(region, cell_lat_idx, cell_lon_idx, year)`: `{region, cell_lat_idx, cell_lon_idx, year,
 cover_class, forest_pct, crop_pct, other_veg_pct, land_pixels}`. Percentages are the share of
-*land* pixels in the 0.05-degree cell (500 m MCD12Q1 pixels; water 17 and fill 255 are excluded);
-`cover_class` is the majority land group. Only cells in loaded regions are stored; partitioned by
-`region`/`year` Hive-style; rebuilt by `build_cell_cover` (rasterio read over the 500 m
-MCD12Q1 bands; rasterio is not in the runtime requirements).
+*land* pixels in the 0.05-degree cell (500 m MCD12Q1 pixels); pixels with QC other than 0
+(unclassified/misclassified/backfill/climate relabel) are excluded from every count, exactly as
+the MCD12Q1 Statistics CSV counts confident classified land. `cover_class` is the majority land
+group. Only cells in loaded regions are stored; partitioned by `region`/`year` Hive-style; rebuilt
+by `build_cell_cover` (rasterio over LC_Type1 + matching QC files; rasterio is a dev dependency).
 
 ---
 

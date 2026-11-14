@@ -73,7 +73,7 @@ def seam_series(area, start, end, settings, region=None, cover="all"):
 
     # one small scan: (date, platform) counts, region-wide, for the query range
     con.execute(f"""
-        CREATE OR REPLACE TEMP VIEW daily AS
+        CREATE OR REPLACE TEMP TABLE daily AS
         SELECT region, date_local, platform, COUNT(*)::DOUBLE AS cd
         FROM {celldays} AS cd
         WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
@@ -81,18 +81,21 @@ def seam_series(area, start, end, settings, region=None, cover="all"):
         GROUP BY 1,2,3
     """)
 
-    # region-aware sensor-outage days (same definition as rebuild-time validation)
+    # region-aware sensor-outage days (same definition as rebuild-time validation):
+    # a day outage iff exactly one of Aqua/SNPP read at least one cell-day in the
+    # region -- i.e. the symmetric difference, computed as a set operation
     con.execute("""CREATE OR REPLACE TEMP VIEW aqua_d AS
         SELECT region, date_local FROM daily WHERE platform = 'Aqua'""")
     con.execute("""CREATE OR REPLACE TEMP VIEW snpp_d AS
         SELECT region, date_local FROM daily WHERE platform = 'SNPP'""")
-    con.execute("""CREATE OR REPLACE TEMP VIEW outage AS
-        SELECT region, date_local FROM aqua_d
-        WHERE (region, date_local) NOT IN (SELECT region, date_local FROM snpp_d)
+    con.execute("""CREATE OR REPLACE TEMP TABLE outage AS
+        (SELECT region, date_local FROM aqua_d
+         EXCEPT SELECT region, date_local FROM snpp_d)
         UNION
-        SELECT region, date_local FROM snpp_d
-        WHERE (region, date_local) NOT IN (SELECT region, date_local FROM aqua_d)
+        (SELECT region, date_local FROM snpp_d
+         EXCEPT SELECT region, date_local FROM aqua_d)
     """)
+    con.execute("ANALYZE outage")
     outage_rows = con.execute(
         "SELECT date_local FROM outage "
         + ("WHERE region = '" + region.replace("'", "''") + "' " if region else "")
@@ -109,11 +112,10 @@ def seam_series(area, start, end, settings, region=None, cover="all"):
                EXTRACT(month FROM cd.date_local)::INTEGER AS m,
                cd.platform,
                COUNT(*)::DOUBLE AS raw_n,
-               COUNT(*) FILTER (WHERE NOT EXISTS (
-                     SELECT 1 FROM outage o
-                     WHERE o.region = cd.region AND o.date_local = cd.date_local)) AS overlap_n
+               COUNT(*) FILTER (WHERE o.region IS NULL) AS overlap_n
         FROM {celldays} AS cd
-        WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
+        LEFT JOIN outage o ON o.region = cd.region AND o.date_local = cd.date_local
+        WHERE cd.date_local >= DATE '{start_s}' AND cd.date_local <= DATE '{end_s}'
           AND ({cell_filter}) AND ({cover_pred_cd})
         GROUP BY 1,2,3
     """).fetchall()
@@ -133,13 +135,14 @@ def seam_series(area, start, end, settings, region=None, cover="all"):
         krows = con.execute(f"""
             SELECT cd.region, cd.y, cd.m, SUM(cd.n * COALESCE(k.k, ka.k, aam.k)) AS v
             FROM (
-              SELECT region, EXTRACT(year FROM date_local)::INTEGER AS y,
-                     EXTRACT(month FROM date_local)::INTEGER AS m,
-                     tile_id, COUNT(*)::DOUBLE AS n
+              SELECT cd.region AS region, EXTRACT(year FROM cd.date_local)::INTEGER AS y,
+                     EXTRACT(month FROM cd.date_local)::INTEGER AS m,
+                     cd.tile_id, COUNT(*)::DOUBLE AS n
               FROM {celldays} AS cd
+              LEFT JOIN outage o ON o.region = cd.region AND o.date_local = cd.date_local
               WHERE platform = 'Aqua'
-                AND date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
-                AND (region, date_local) NOT IN (SELECT region, date_local FROM outage)
+                AND cd.date_local >= DATE '{start_s}' AND cd.date_local <= DATE '{end_s}'
+                AND o.region IS NULL
                 AND ({cell_filter}) AND ({cover_pred_cd})
               GROUP BY 1,2,3,4
             ) AS cd

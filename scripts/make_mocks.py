@@ -44,6 +44,11 @@ def main():
         ("api_coverage.json", "/api/coverage"),
         ("api_methods.json", "/api/methods?region=southeast_asia"),
         ("api_series.json", f"/api/series?{q}"),
+        ("api_calendar_forest.json", f"/api/calendar?{q}&cover=forest"),
+        ("api_summary_forest.json", f"/api/summary?{q}&cover=forest"),
+        ("api_map_forest.json", f"/api/map?{q}&cover=forest"),
+        ("api_hotspots_forest.json", f"/api/hotspots?{q}&page=1&page_size=100&all_sensors=1&cover=forest"),
+        ("api_series_forest.json", f"/api/series?{q}&cover=forest"),
     ]
     for name, url in endpoints:
         resp = client.get(url)
