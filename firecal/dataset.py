@@ -77,6 +77,13 @@ def state_path(settings):
     return processed_root(settings) / STATE_FILE
 
 
+def validation_path(settings, region):
+    """Per-region validation file (Stage 7: C5)."""
+    d = processed_root(settings) / "validation"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{region}.json"
+
+
 def load_state(settings):
     p = state_path(settings)
     if not p.exists():

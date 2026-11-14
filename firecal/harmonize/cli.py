@@ -19,8 +19,16 @@ def main():
 
     from firecal.harmonize.db import rebuild
     t0 = time.time()
-    lock_fd = acquire_writer_lock(settings)
+    own = lock_fd is None
+    if own:
+        lock_fd = acquire_writer_lock(settings)
     try:
+        # --recalibrate: drop the calibration fingerprint so calibration is refit
+        if getattr(args, "recalibrate", False) and args.region:
+            from firecal.dataset import load_state, save_state
+            state = load_state(settings)
+            state.setdefault("calibration", {}).pop(args.region, None)
+            save_state(settings, state)
         rebuilt = rebuild(settings, region=args.region)
         print(f"rebuilt {len(rebuilt)} harmonized partitions in {time.time() - t0:.1f}s")
 
@@ -37,7 +45,7 @@ def main():
                                       settings.MIN_CALIBRATION_CELLDAYS, shrink)
                 val = build_validation(con, cd, cal, args.region,
                                        settings.CALIBRATION_YEARS, settings.VALIDATION_YEARS)
-                out = args.out_validation or os.path.join(settings.DATA_PROCESSED, "validation.json")
+                out = args.out_validation or str(validation_path(settings, args.region))
                 with open(out, "w") as f:
                     json.dump(val, f, indent=2)
                 print("calibration r", val["calibration_years"]["metrics"]["pearson_r"],

@@ -81,6 +81,10 @@ def env(tmp_path):
     coverage = [{"name": "test_region", "label": "Test Region", "bbox": [-70.0, -20.0, -60.0, 0.0],
                  "countries": ["Bolivia"], "start": "2017-01-01", "end": "2026-09-21",
                  "platforms": ["Aqua", "SNPP"], "latest_date": "2026-09-21",
+                 "synthetic": False},
+                {"name": "region_b", "label": "Region B", "bbox": [0.0, 0.0, 10.0, 10.0],
+                 "countries": ["B"], "start": "2017-01-01", "end": "2026-09-21",
+                 "platforms": ["Aqua", "SNPP"], "latest_date": "2026-09-21",
                  "synthetic": False}]
     json.dump(coverage, open(root / "processed" / "coverage.json", "w"))
     validation = {
@@ -95,12 +99,23 @@ def env(tmp_path):
                                          "monthly_viirs": [1] * 12,
                                          "monthly_modis": [1] * 12}},
     }
-    json.dump(validation, open(root / "processed" / "validation.json", "w"))
+    os.makedirs(root / "processed" / "validation", exist_ok=True)
+    json.dump(validation, open(root / "processed" / "validation" / "test_region.json", "w"))
+    validation_b = json.loads(json.dumps(validation))
+    validation_b["calibration_years"]["metrics"]["bias_pct"] = 99.0
+    json.dump(validation_b, open(root / "processed" / "validation" / "region_b.json", "w"))
     con.execute(f"""
-        COPY (SELECT 'test_region' AS region, 'Aqua' AS platform, 'SNPP' AS reference,
-                     '0_0' AS tile_id, 7::SMALLINT AS month, 2.5::DOUBLE AS k,
-                     10::BIGINT AS modis_celldays, 25::BIGINT AS viirs_celldays,
-                     'tile_month' AS level)
+        COPY (
+          SELECT 'test_region' AS region, 'Aqua' AS platform, 'SNPP' AS reference,
+                 '0_0' AS tile_id, 7::SMALLINT AS month, 2.5::DOUBLE AS k,
+                 10::BIGINT AS modis_celldays, 25::BIGINT AS viirs_celldays,
+                 'tile_month' AS level
+          UNION ALL
+          SELECT 'region_b' AS region, 'Aqua' AS platform, 'SNPP' AS reference,
+                 '0_0' AS tile_id, 7::SMALLINT AS month, 2.5::DOUBLE AS k,
+                 10::BIGINT AS modis_celldays, 25::BIGINT AS viirs_celldays,
+                 'tile_month' AS level
+        )
         TO '{(root / "processed" / "calibration.parquet").as_posix()}' (FORMAT PARQUET)
     """)
     json.dump({"detections": "dv1", "celldays": "dv1", "harmonized_daily": "dv1"},
@@ -206,6 +221,17 @@ def test_methods(client):
     assert d["calibration"]["k_max"] == 2.5
     assert d["calibration"]["count_per_level"] == {"tile_month": 1}
     assert d["validation"]["calibration_years"]["years"] == [2013, 2017]
+
+
+def test_methods_two_regions_isolated(client):
+    # each region reads its own validation/<region>.json; one region's values
+    # must not leak into the other's response
+    r = client.get("/api/methods?region=test_region")
+    assert r.status_code == 200
+    assert r.get_json()["validation"]["calibration_years"]["metrics"]["bias_pct"] == 2.0
+    r = client.get("/api/methods?region=region_b")
+    assert r.status_code == 200
+    assert r.get_json()["validation"]["calibration_years"]["metrics"]["bias_pct"] == 99.0
 
 
 def test_400_invalid_dates(client):

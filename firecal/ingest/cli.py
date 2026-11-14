@@ -16,7 +16,7 @@ from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, load_state,
                              release_writer_lock)
 
 
-def main():
+def main(lock_fd=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--region", default=None)
     parser.add_argument("--bbox", default=None)
@@ -43,7 +43,9 @@ def main():
         sys.exit(1)
 
     from firecal.ingest.db import connect, expand, ingest_files
-    lock_fd = acquire_writer_lock(settings)
+    own = lock_fd is None
+    if own:
+        lock_fd = acquire_writer_lock(settings)
     try:
         con = connect()
         paths = expand(args.files)
@@ -58,7 +60,8 @@ def main():
             print("partitions:", written[:10], "..." if len(written) > 10 else "")
         write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
     finally:
-        release_writer_lock(lock_fd)
+        if own:
+            release_writer_lock(lock_fd)
 
 
 if __name__ == "__main__":
