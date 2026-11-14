@@ -7,15 +7,20 @@ import MapCard from './MapCard';
 const dispatch = vi.fn();
 const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const };
 
+const coverage = { regions: [
+  { name: 'southeast_asia', bbox: [92.0, -11.0, 141.0, 28.5], synthetic: true, start: '2003-01-01', end: '2026-11-12', latest_date: '2026-11-12', countries: [], platforms: [], label: 'Southeast Asia' },
+], starter_areas: [
+  { name: 'central_kalimantan', label: 'Central Kalimantan', region: 'southeast_asia', bbox: [110.7, -3.6, 115.9, 0.8] },
+], data_version: 'v' };
+
 vi.mock('../../state/useAppState', () => ({
   useAppState: () => ({ state, dispatch }),
 }));
 vi.mock('../../api/hooks', () => ({
-  useCoverage: () => ({ data: { regions: [
-    { name: 'southeast_asia', bbox: [92.0, -11.0, 141.0, 28.5], synthetic: true, start: '2003-01-01', end: '2026-11-12', latest_date: '2026-11-12', countries: [], platforms: [], label: 'Southeast Asia' },
-  ], starter_areas: [
-    { name: 'central_kalimantan', label: 'Central Kalimantan', region: 'southeast_asia', bbox: [110.7, -3.6, 115.9, 0.8] },
-  ] }, isLoading: false }),
+  useCoverage: () => ({ data: coverage, isLoading: false }),
+  useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-12', valid: true, coverage }),
+  useMap: () => ({ data: { grid_deg: 0.05, aggregated_to: null, cells: [], data_version: 'v' } }),
+  useCalendar: () => ({ data: null }),
 }));
 
 describe('MapCard', () => {
