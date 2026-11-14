@@ -25,6 +25,7 @@ __pycache__/
 data/raw/
 data/processed/
 data/synthetic/
+data/_quarantine/
 data/*.log
 data/*.err
 
