@@ -281,10 +281,10 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
         new_parts_set = set()
         for _, _, sd, yrs in changed:
             if year in yrs:
-                g = f"{sd.replace(os.sep, '/')}/*/*/*.parquet"
-                if glob.glob(g):
-                    parts.append(g)
-                    new_parts_set.add(g)
+                for f in _year_parts([(sd, yrs)], region, year):
+                    p = f.replace(os.sep, "/")
+                    parts.append(p)
+                    new_parts_set.add(p)
         # preserve unchanged rows from the existing published partition
         existing = dataset_dir(settings, dataset) / f"region={region}" / f"year={year}"
         if existing.exists():
