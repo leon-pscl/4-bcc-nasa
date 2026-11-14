@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
-  HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema,
+  HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema, SeriesResponseSchema,
 } from './schemas';
 import { buildQueryParams, isQueryValid } from './params';
 import type { AppState } from '../state/urlState';
@@ -14,7 +14,7 @@ export function useCoverage() {
   });
 }
 
-export function useQueryParams(state: Pick<AppState, 'area' | 'start' | 'end'> | null | undefined) {
+export function useQueryParams(state: Pick<AppState, 'area' | 'start' | 'end' | 'cover'> | null | undefined) {
   const { data: coverage } = useCoverage();
   const valid = !!state && isQueryValid(state, coverage);
   const params = valid && state ? buildQueryParams(state) : '';
@@ -60,5 +60,13 @@ export function useMethods(region: string) {
     queryKey: ['methods', region],
     queryFn: () => apiFetch('methods', `/api/methods?region=${encodeURIComponent(region)}`, MethodsResponseSchema),
     enabled: region.length > 0,
+  });
+}
+
+export function useSeries(params: string) {
+  return useQuery({
+    queryKey: ['series', params],
+    queryFn: () => apiFetch('series', `/api/series?${params}`, SeriesResponseSchema),
+    enabled: params.length > 0,
   });
 }

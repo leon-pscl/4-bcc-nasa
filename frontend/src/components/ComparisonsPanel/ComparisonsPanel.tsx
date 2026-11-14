@@ -5,7 +5,7 @@ import {
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
 import { useAppState } from '../../state/useAppState';
-import { useCalendar, useSummary, useQueryParams } from '../../api/hooks';
+import { useCalendar, useSummary, useQueryParams, useSeries } from '../../api/hooks';
 import { formatNumber } from '../../lib/format';
 import type { AreaState } from '../../state/urlState';
 import styles from './ComparisonsPanel.module.css';
@@ -34,8 +34,10 @@ export default function ComparisonsPanel() {
   const { params, valid, coverage } = useQueryParams(state);
   const { data: summary } = useSummary(params);
   const { data: calendar } = useCalendar(params);
+  const { data: series } = useSeries(params);
   const monthRef = useRef<ChartJS<'line'> | null>(null);
   const yearRef = useRef<ChartJS<'bar'> | null>(null);
+  const typical = series?.validation.typical_year_error_pct;
 
   if (!valid) return <p className={styles.muted}>Choose a valid area and dates, then Analyze to see comparisons.</p>;
   if (!summary || !calendar) return <p className={styles.muted}>Loading comparisons.</p>;
@@ -82,8 +84,16 @@ export default function ComparisonsPanel() {
     return ctx.createPattern(c, 'repeat') ?? '#6b6b6d';
   })();
 
+  const modisHatch = (() => {
+    const c = document.createElement('canvas'); c.width = 6; c.height = 6;
+    const ctx = c.getContext('2d'); if (!ctx) return '#8c8c8e';
+    ctx.fillStyle = '#8c8c8e'; ctx.fillRect(0,0,6,6);
+    ctx.strokeStyle = '#b0b0b2'; ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(6,0); ctx.stroke();
+    return ctx.createPattern(c, 'repeat') ?? '#8c8c8e';
+  })();
   const yearColors = calendar.years.map((y) => {
     if (calendar.partial_years.includes(y)) return hatch as string | CanvasPattern;
+    if (y < 2012) return modisHatch as string | CanvasPattern;
     const peak = summary.peak_year?.year === y;
     return peak ? '#0f0f0f' : '#6b6b6d';
   });
@@ -129,6 +139,9 @@ export default function ComparisonsPanel() {
                     <div className={styles.barRow}><span>This year</span><div className={styles.track}><div className={styles.fill} style={{ width: `${(cm.value/barMax)*100}%`, background: '#e31a1c' }} /></div><span>{formatNumber(cm.value)}</span></div>
                     <div className={styles.barRow}><span>Median</span><div className={styles.track}><div className={styles.fill} style={{ width: `${(cm.median_same_span/barMax)*100}%`, background: 'var(--ink)' }} /></div><span>{formatNumber(cm.median_same_span)}</span></div>
                   </div>
+                  {state.cover !== 'forest' && cm.forest_share != null && cm.median_forest_share != null ? (
+                    <p className={styles.muted}>{Math.round(cm.forest_share)}% of these hotspots were in forest (usually {Math.round(cm.median_forest_share)}%).</p>
+                  ) : null}
                   <div className={styles.foot}>Median of the same days ({MONTHS[cm.month - 1]} 1-{cm.through_day}) in {calendar.baseline_years[0]}-{calendar.baseline_years[calendar.baseline_years.length - 1]}. Whole months would make a month in progress look low.</div>
                 </>
               ) : (
@@ -162,9 +175,10 @@ export default function ComparisonsPanel() {
         <h3 className={styles.heading}>Which years burned most?</h3>
         <div className={styles.chartHead}><span /><button className={styles.pngBtn} onClick={() => downloadPng(yearRef.current, fileBase(state, 'yearly_totals'))}>PNG</button></div>
         <div className={styles.canvas120}><Bar ref={yearRef} data={yearlyData as never} options={yearOpts} aria-label={`Yearly totals ${calendar.years[0]} to ${calendar.years[calendar.years.length - 1]}; highest complete year ${summary.peak_year?.year ?? ''} with ${summary.peak_year ? formatNumber(summary.peak_year.value) : ''} hotspots`} role="img" /></div>
+        {typical != null ? <p className={styles.sentence}>Pre-2012 bars are estimated from MODIS (±{typical}% typical for this area).</p> : null}
         <div className={styles.topTitle}>Top years (complete years only)</div>
         <ol className={styles.topList}>
-          {topYears.map((t, i) => <li key={t.y} className={styles.topRow}><span>{i + 1}</span><span>{t.y}</span><span>{formatNumber(t.v)}</span></li>)}
+          {topYears.map((t, i) => <li key={t.y} className={styles.topRow}><span>{i + 1}</span><span>{t.y}{t.y < 2012 && typical != null ? ` · MODIS estimate ±${typical}%` : ''}</span><span>{formatNumber(t.v)}</span></li>)}
         </ol>
       </section>
     </>

@@ -3,6 +3,9 @@ import SyntheticBanner from './components/SyntheticBanner/SyntheticBanner';
 import MapCard from './components/MapCard/MapCard';
 import SidePanel from './components/SidePanel/SidePanel';
 import BurningCalendar from './components/BurningCalendar/BurningCalendar';
+import HotspotTable from './components/HotspotTable/HotspotTable';
+import Downloads from './components/Downloads/Downloads';
+import CoverControl from './components/CoverControl/CoverControl';
 import { useAppState } from './state/useAppState';
 import './index.css';
 
@@ -18,7 +21,10 @@ export default function App() {
         <div style={{ flex: '999 1 640px' }}><MapCard /></div>
         <div style={{ flex: '1 1 360px', maxWidth: 420 }}><SidePanel /></div>
       </div>
+      <CoverControl />
       <BurningCalendar />
+      <HotspotTable />
+      <Downloads />
     </main>
   );
 }

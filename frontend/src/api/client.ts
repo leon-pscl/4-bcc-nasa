@@ -19,7 +19,10 @@ const mockMode = () => {
 
 export async function apiFetch<T>(key: string, url: string, schema: z.ZodType<T>): Promise<T> {
   if (mockMode()) {
-    const res = await fetch(`/mock/api_${key}.json`);
+    const u = new URL(url, window.location.origin);
+    const cover = u.searchParams.get('cover') || 'all';
+    const suffix = cover === 'all' ? '' : `_${cover}`;
+    const res = await fetch(`/mock/api_${key}${suffix}.json`);
     if (!res.ok) throw new ApiError(res.status, 'mock not found');
     const data = await res.json();
     return schema.parse(data);

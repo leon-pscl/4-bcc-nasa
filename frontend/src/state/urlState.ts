@@ -2,6 +2,8 @@ export type AreaState =
   | { kind: 'bbox'; bbox: [number, number, number, number] }
   | { kind: 'point'; point: [number, number]; radius_km: number };
 
+export type Cover = 'all' | 'forest' | 'farmland' | 'other';
+
 export interface AppState {
   area: AreaState;
   start: string;
@@ -9,6 +11,7 @@ export interface AppState {
   view: 'count' | 'anomaly';
   focus?: string;
   tab: 'comparisons' | 'watchlist' | 'methods';
+  cover: Cover;
 }
 
 export function parseHash(hash: string): Partial<AppState> {
@@ -36,6 +39,9 @@ export function parseHash(hash: string): Partial<AppState> {
   if (focus) out.focus = focus;
   const tab = params.get('tab');
   if (tab === 'comparisons' || tab === 'watchlist' || tab === 'methods') out.tab = tab;
+  const cover = params.get('cover');
+  if (cover === 'forest' || cover === 'farmland' || cover === 'other') out.cover = cover;
+  else out.cover = 'all';
   return out;
 }
 
@@ -51,5 +57,6 @@ export function toHash(state: AppState): string {
   params.set('view', state.view);
   if (state.focus) params.set('focus', state.focus);
   params.set('tab', state.tab);
+  if (state.cover && state.cover !== 'all') params.set('cover', state.cover);
   return `#${params.toString()}`;
 }
