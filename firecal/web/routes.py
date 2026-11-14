@@ -358,11 +358,12 @@ def create_app(settings=None, dist_dir=None):
         cover = cover_arg()
         from flask import Response, stream_with_context
         if area.radius_km is not None:
-            name = f"hotspots_point_{area.lat}_{area.lon}_{area.radius_km}_{start}_{end}.csv"
+            base = f"hotspots_point_{area.lat}_{area.lon}_{area.radius_km}_{start}_{end}"
         else:
-            w, s, e, n = area.w, area.s, area.e, area.n
-            name = f"hotspots_{w}_{s}_{e}_{n}_{start}_{end}.csv"
-        cover = cover_arg()
+            base = f"hotspots_{area.w}_{area.s}_{area.e}_{area.n}_{start}_{end}"
+        if cover != "all":
+            base = base.replace("hotspots", f"hotspots_{cover}", 1)
+        name = f"{base}.csv"
         return Response(
             stream_with_context(stream_hotspots_csv(area, start, end, settings,
                                                   all_sensors=all_sensors, region=region,
@@ -383,7 +384,8 @@ def create_app(settings=None, dist_dir=None):
                 w.writerow([y, m, v if v is not None else ""])
         resp = make_response(buf.getvalue())
         resp.headers["Content-Type"] = "text/csv"
-        resp.headers["Content-Disposition"] = 'attachment; filename="calendar.csv"'
+        name = f"calendar_{cover}.csv" if cover != "all" else "calendar.csv"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{name}"'
         return resp
 
     @app.route("/api/calendar.png")
@@ -394,6 +396,8 @@ def create_app(settings=None, dist_dir=None):
         png = render_calendar_png(result["years"], result["values"])
         resp = make_response(png)
         resp.headers["Content-Type"] = "image/png"
+        name = f"calendar_{cover}.png" if cover != "all" else "calendar.png"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{name}"'
         return resp
 
     @app.route("/api/methods")

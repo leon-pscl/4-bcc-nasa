@@ -9,9 +9,10 @@ import pytest
 MOCK_DIR = os.path.join("frontend", "public", "mock")
 FILES = ["api_calendar.json", "api_summary.json", "api_map.json", "api_hotspots.json",
          "api_coverage.json", "api_methods.json", "api_error400.json", "api_error422.json",
-         "api_series.json",
-         "api_calendar_forest.json", "api_summary_forest.json", "api_map_forest.json",
-         "api_hotspots_forest.json", "api_series_forest.json"]
+         "api_series.json"] \
+    + [f"api_{kind}_{cover}.json"
+       for cover in ("forest", "farmland", "other")
+       for kind in ("calendar", "summary", "map", "hotspots", "series")]
 
 
 def _load(name):
@@ -156,12 +157,13 @@ CHECKS = {
     "api_coverage.json": _check_coverage,
     "api_methods.json": _check_methods,
     "api_series.json": _check_series,
-    "api_calendar_forest.json": _check_calendar,
-    "api_summary_forest.json": _check_summary,
-    "api_map_forest.json": _check_map,
-    "api_hotspots_forest.json": _check_hotspots,
-    "api_series_forest.json": _check_series,
 }
+for _cover in ("forest", "farmland", "other"):
+    CHECKS[f"api_calendar_{_cover}.json"] = _check_calendar
+    CHECKS[f"api_summary_{_cover}.json"] = _check_summary
+    CHECKS[f"api_map_{_cover}.json"] = _check_map
+    CHECKS[f"api_hotspots_{_cover}.json"] = _check_hotspots
+    CHECKS[f"api_series_{_cover}.json"] = _check_series
 
 
 @pytest.mark.parametrize("name", FILES)
