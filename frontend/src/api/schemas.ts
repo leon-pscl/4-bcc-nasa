@@ -119,6 +119,33 @@ export const MethodsResponseSchema = z.object({
   data_version: z.string(),
 });
 
+const NumArr = z.array(z.number().nullable());
+const YearMetrics = z.object({ pearson_r: z.number(), bias_pct: z.number() });
+
+export const SeriesResponseSchema = z.object({
+  months: z.array(z.object({ year: z.number(), month: z.number() })),
+  aqua: NumArr,
+  snpp: NumArr,
+  noaa20: NumArr,
+  noaa21: NumArr,
+  aqua_k: z.number(),
+  harmonized: NumArr,
+  switch_date: z.string(),
+  outage_days: z.number().optional(),
+  validation: z.object({
+    overlap_years: z.array(z.number()),
+    pearson_r: z.number(),
+    bias_pct: z.number(),
+    per_year: z.record(z.string(), YearMetrics),
+    note: z.string().optional(),
+    fit_years: z.array(z.number()).optional(),
+    in_sample: YearMetrics.optional(),
+    held_out_aggregate: YearMetrics.optional(),
+    typical_year_error_pct: z.number().optional(),
+  }),
+  data_version: z.string().optional(),
+});
+
 export const ApiErrorSchema = z.object({ error: z.string(), field: z.string().optional() });
 
 export type CalendarResponse = z.infer<typeof CalendarResponseSchema>;
@@ -127,3 +154,4 @@ export type MapResponse = z.infer<typeof MapResponseSchema>;
 export type HotspotsResponse = z.infer<typeof HotspotsResponseSchema>;
 export type CoverageResponse = z.infer<typeof CoverageResponseSchema>;
 export type MethodsResponse = z.infer<typeof MethodsResponseSchema>;
+export type SeriesResponse = z.infer<typeof SeriesResponseSchema>;

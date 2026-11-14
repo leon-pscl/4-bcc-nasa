@@ -49,7 +49,7 @@ export default function SidePanel() {
       >
         {state.tab === 'comparisons' && <ComparisonsPanel />}
         {state.tab === 'watchlist' && <p className={styles.placeholder}>Watchlist coming in 6i.</p>}
-        {state.tab === 'methods' && <p className={styles.placeholder}>Methods coming in 6h.</p>}
+        {state.tab === 'methods' && <p className={styles.placeholder}>Methods: validation numbers (text) — coming per spec 5.7.</p>}
       </div>
     </section>
   );
