@@ -57,14 +57,16 @@ def _region_bboxes(settings):
     return bboxes
 
 
-def _cell_table(bboxes):
+def _cell_table(bboxes, grid_deg=0.05):
     """int arrays (cell_lat_idx, cell_lon_idx, region_idx) for every loaded cell."""
+    from firecal.cells.grid import cell_index
     lats, lons, regs = [], [], []
     for ri, (_, (w, s, e, n)) in enumerate(bboxes):
-        lat_lo = math.floor(s / 0.05)
-        lat_hi = math.floor((n - 1e-12) / 0.05)
-        lon_lo = math.floor(w / 0.05)
-        lon_hi = math.floor((e - 1e-12) / 0.05)
+        g = grid_deg
+        lat_lo = cell_index(s, g)
+        lat_hi = math.ceil(round(n / g, 6)) - 1
+        lon_lo = cell_index(w, g)
+        lon_hi = math.ceil(round(e / g, 6)) - 1
         for la in range(lat_lo, lat_hi + 1):
             for lo in range(lon_lo, lon_hi + 1):
                 lats.append(la)
@@ -100,7 +102,7 @@ def build_cell_cover(settings, files=None, dry_run=False):
     if not bboxes:
         raise ValueError("no loaded regions configured; cell_cover is built for loaded regions only")
 
-    cell_lat, cell_lon, cell_reg, cell_key = _cell_table(bboxes)
+    cell_lat, cell_lon, cell_reg, cell_key = _cell_table(bboxes, getattr(settings, "GRID_DEG", 0.05))
     names = [b[0] for b in bboxes]
     region_of = np.array(names, dtype=object)
 
@@ -112,7 +114,8 @@ def build_cell_cover(settings, files=None, dry_run=False):
         qc_path = path.replace("LC_Type1", "QC")
         if not os.path.exists(qc_path):
             raise FileNotFoundError(f"missing QC granule for {path}")
-        counts = _aggregate(path, qc_path, cell_lat, cell_lon, cell_reg, cell_key)
+        counts = _aggregate(path, qc_path, cell_lat, cell_lon, cell_reg, cell_key,
+                            getattr(settings, "GRID_DEG", 0.05))
         df = _frame_for_file(counts, region_of, cell_lat, cell_lon, cell_reg, year)
         if df is None:
             print("skipped", path, "(no land pixels)")
@@ -156,7 +159,7 @@ def build_cell_cover(settings, files=None, dry_run=False):
     return written
 
 
-def _aggregate(lc_path, qc_path, cell_lat, cell_lon, cell_reg, cell_key):
+def _aggregate(lc_path, qc_path, cell_lat, cell_lon, cell_reg, cell_key, grid_deg=0.05):
     """Return per-cell (n_land, forest, farmland, other_veg, other) arrays for one granule."""
     import rasterio
 
@@ -177,10 +180,12 @@ def _aggregate(lc_path, qc_path, cell_lat, cell_lon, cell_reg, cell_key):
     nrows, ncols = band.shape
 
     # map raster pixels to cell indices via the affine transform, block at a time
+    from firecal.cells.grid import cell_index_np
+    g = grid_deg
     lat_centers = t.f + (np.arange(nrows, dtype=np.float64) + 0.5) * t.e
     lon_centers = t.c + (np.arange(ncols, dtype=np.float64) + 0.5) * t.a
-    lat_idx = np.floor(lat_centers / 0.05).astype(np.int64)
-    lon_idx = np.floor(lon_centers / 0.05).astype(np.int64)
+    lat_idx = cell_index_np(lat_centers, g)
+    lon_idx = cell_index_np(lon_centers, g)
     # block-level key/search to bound temporary memory
     BLOCK = 256
 

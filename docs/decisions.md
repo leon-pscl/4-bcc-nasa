@@ -38,6 +38,7 @@ or a contract changes. Newest last.
 | D26 | 2026-11-15 | **Amazon removed from regions.json; Southeast Asia only for the submission.** | no Amazon data is loaded, and `update --all` would start a 2003-to-today API backfill for it. |
 
 | D27 | 2026-11-15 | **Web bound to 127.0.0.1:8080, read-only `./data` mount, `/health` healthcheck, 1-hour updater retry, json-file log rotation (10m x3).** | Public-server hardening: Caddy on the host is the only way in, the web container cannot write the data dir or bloat disk with logs, and a failed daily update retries in 1 hour instead of silently waiting 24. |
+| D28 | 2026-11-15 | **Cell index = `floor(round(x / GRID_DEG, 6))`; box filters use integer index ranges (`cell_range`); land cover reads `GRID_DEG`.** | 0.05 isn't exact in binary, so `floor(x / 0.05)` put about a quarter of on-edge coordinates in the cell below, and float cell centers flipped edge rows south of the equator. |
 
 ## Open
 

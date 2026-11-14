@@ -4,6 +4,7 @@ Reads the detections dataset and writes Hive-partitioned cell-day partitions
 (region, year). Only partitions whose inputs changed are rebuilt.
 """
 
+from firecal.cells.grid import cell_index_sql
 from firecal.dataset import fingerprint, partition_key, read_dataset, write_partition, PIPELINE_VERSION
 from firecal.duck import connect
 
@@ -53,8 +54,8 @@ def build_celldays_sql(source_sql, grid_deg, tile_deg, confidence_keep, keep_typ
     return f"""
     SELECT
         region,
-        CAST(FLOOR(latitude / {grid_deg}) AS INTEGER)  AS cell_lat_idx,
-        CAST(FLOOR(longitude / {grid_deg}) AS INTEGER) AS cell_lon_idx,
+        {cell_index_sql("latitude", grid_deg)}  AS cell_lat_idx,
+        {cell_index_sql("longitude", grid_deg)} AS cell_lon_idx,
         CAST(FLOOR(latitude / {tile_deg}) + 0.0 AS VARCHAR) || '_' ||
              CAST(FLOOR(longitude / {tile_deg}) + 0.0 AS VARCHAR) AS tile_id,
         date_local,

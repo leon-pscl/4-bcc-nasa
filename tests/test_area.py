@@ -7,6 +7,8 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from firecal.analytics.area import Area
+from firecal.cells.grid import cell_range
 from firecal.config import Settings
 
 
@@ -50,6 +52,48 @@ def test_bbox_cell_on_boundary():
 
 
 
+
+
+def test_cell_range_known_values():
+    assert cell_range(-11.0, -10.825, 0.05) == (-220, -218)
+    assert cell_range(97.3, 101.5, 0.05) == (1946, 2029)
+
+
+def test_box_edge_on_cell_center_negative():
+    from firecal.analytics.area import Area
+    # cell -217's center is -10.825: south edge inclusive, north edge exclusive
+    a = Area.from_bbox(-100.0, -10.825, -99.0, 0.0)
+    assert a.cell_inside(-217, -1990) is True
+    a2 = Area.from_bbox(-100.0, -11.0, -99.0, -10.825)
+    assert a2.cell_inside(-217, -1990) is False
+
+
+def test_box_boxes_cell_inside_matches_bbox_sql():
+    import duckdb
+    from firecal.analytics.area import Area
+    boxes = [
+        (0.275, 0.275, 2.325, 2.325),     # positive edges on cell centers
+        (-2.325, -2.325, -0.275, -0.275),  # negative edges on cell centers
+        (-1.025, -0.525, 1.525, 0.775),    # mixed
+    ]
+    for w, s, e, n in boxes:
+        a = Area.from_bbox(w, s, e, n)
+        g = 0.05
+        lat_lo = int(s / g) - 1
+        lat_hi = int(n / g) + 1
+        lon_lo = int(w / g) - 1
+        lon_hi = int(e / g) + 1
+        idx = [(la, lo) for la in range(lat_lo, lat_hi + 1) for lo in range(lon_lo, lon_hi + 1)]
+        py_cells = {(la, lo) for la, lo in idx if a.cell_inside(la, lo)}
+        con = duckdb.connect()
+        try:
+            con.execute("CREATE TABLE cells(cell_lat_idx INTEGER, cell_lon_idx INTEGER)")
+            con.executemany("INSERT INTO cells VALUES (?, ?)", idx)
+            sql_cells = {(la, lo) for la, lo in con.execute(
+                f"SELECT cell_lat_idx, cell_lon_idx FROM cells WHERE {a.bbox_sql(a)}").fetchall()}
+        finally:
+            con.close()
+        assert py_cells == sql_cells, (w, s, e, n)
 
 
 def test_point_radius_boundary_exact():

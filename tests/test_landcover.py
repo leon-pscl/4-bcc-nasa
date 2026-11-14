@@ -8,6 +8,8 @@ plus a synthetic cell_cover for the API-level tests.
 import math
 import os
 
+from firecal.cells.grid import cell_index
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -33,6 +35,14 @@ def _sg_settings(tmp_path, bbox=("test_region",) + tuple(SMALL_BBOX)):
     settings.MAX_AREA_KM2 = 500_000
     settings.SWITCH_DATE = "2012-02-01"
     return settings
+
+
+def test_cell_table_follows_grid_deg():
+    from firecal.landcover.ingest import _cell_table
+    # southeast_asia south edge -11.0 at 0.1 deg -> lat_lo == -110
+    lats, lons, regs, key = _cell_table([("southeast_asia", (95.0, -11.0, 96.0, -9.0))], 0.1)
+    assert lats.min() == -110
+    assert lats.max() == -91  # n = -9.0 is exclusive
 
 
 def test_igbp_class_of():
@@ -131,7 +141,7 @@ def env(tmp_path):
               "other_vegetation": (-3.975, 112.125), "other": (-3.975, 112.175)}
     df = pd.DataFrame([
         {"region": "test_region",
-         "cell_lat_idx": math.floor(lat / 0.05), "cell_lon_idx": math.floor(lon / 0.05),
+         "cell_lat_idx": cell_index(lat, 0.05), "cell_lon_idx": cell_index(lon, 0.05),
          "year": year, "cover_class": cls,
          "forest_pct": 100 if cls == "forest" else 0,
          "crop_pct": 100 if cls == "farmland" else 0,
@@ -151,7 +161,7 @@ def env(tmp_path):
     for year in (2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012,
                  2018, 2019, 2020, 2021, 2025, 2026):
         for cls, (lat, lon) in coords.items():
-            li, lo = math.floor(lat / 0.05), math.floor(lon / 0.05)
+            li, lo = cell_index(lat, 0.05), cell_index(lon, 0.05)
             rows.append(("test_region", li, lo, "0_0", f"{year}-06-15", year,
                          3.0 if cls in ("forest", "farmland") else 1.5, "viirs"))
             cd_rows.append(("test_region", li, lo, "0_0", f"{year}-06-15", year,

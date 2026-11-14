@@ -1,5 +1,6 @@
 """Land-cover predicate for the `cover` query parameter (C9, D21/D22)."""
 
+from firecal.cells.grid import cell_index_sql
 from firecal.dataset import read_dataset, COVER
 
 _max_year_cache = {}
@@ -76,8 +77,8 @@ def cover_exists_latlon(settings, cover, alias):
     cover_year = _cover_year_expr(settings, f"EXTRACT(year FROM {alias}.date_local)")
     classes = _CLASS_BY_PARAM[cover]
     return (f"EXISTS (SELECT 1 FROM {cov} c "
-            f"WHERE c.cell_lat_idx = CAST(FLOOR({alias}.latitude / {grid}) AS INTEGER) "
-            f"AND c.cell_lon_idx = CAST(FLOOR({alias}.longitude / {grid}) AS INTEGER) "
+            f"WHERE c.cell_lat_idx = {cell_index_sql(f'{alias}.latitude', grid)} "
+            f"AND c.cell_lon_idx = {cell_index_sql(f'{alias}.longitude', grid)} "
             f"AND c.year = {cover_year} "
             f"AND c.cover_class IN {classes})")
 

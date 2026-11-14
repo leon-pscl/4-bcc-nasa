@@ -8,6 +8,8 @@ from the cell center.
 import math
 from dataclasses import dataclass
 
+from firecal.cells.grid import cell_range
+
 
 def haversine_sql(lat1_expr, lon1_expr, lat2, lon2):
     """SQL expression (km) for the great-circle distance between two points."""
@@ -71,16 +73,18 @@ class Area:
     def cell_inside(self, cell_lat_idx, cell_lon_idx):
         # west and south edges inclusive; east and north exclusive
         g = self.grid_deg
-        c_lon = (cell_lon_idx + 0.5) * g
-        c_lat = (cell_lat_idx + 0.5) * g
         if self.radius_km is not None:
+            c_lon = (cell_lon_idx + 0.5) * g
+            c_lat = (cell_lat_idx + 0.5) * g
             R = 6371.0
             dlat = math.radians(c_lat - self.lat)
             dlon = math.radians(c_lon - self.lon)
             a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(self.lat)) * math.cos(
                 math.radians(c_lat)) * math.sin(dlon / 2) ** 2
             return 2 * R * math.asin(math.sqrt(a)) <= self.radius_km
-        return (self.w <= c_lon < self.e) and (self.s <= c_lat < self.n)
+        lat_first, lat_last = cell_range(self.s, self.n, g)
+        lon_first, lon_last = cell_range(self.w, self.e, g)
+        return (lat_first <= cell_lat_idx <= lat_last) and (lon_first <= cell_lon_idx <= lon_last)
 
     @staticmethod
     def bbox_sql(area, grid_deg=None):
@@ -91,4 +95,6 @@ class Area:
             return (haversine_sql(f"cell_lat_idx*{g}+{g}/2", f"cell_lon_idx*{g}+{g}/2",
                                   area.lat, area.lon)
                     + f" <= {area.radius_km} + 1e-6")
-        return f"cell_lon_idx*{g}+{g}/2 >= {area.w} AND cell_lon_idx*{g}+{g}/2 < {area.e} AND cell_lat_idx*{g}+{g}/2 >= {area.s} AND cell_lat_idx*{g}+{g}/2 < {area.n}"
+        lat_first, lat_last = cell_range(area.s, area.n, g)
+        lon_first, lon_last = cell_range(area.w, area.e, g)
+        return f"cell_lat_idx BETWEEN {lat_first} AND {lat_last} AND cell_lon_idx BETWEEN {lon_first} AND {lon_last}"

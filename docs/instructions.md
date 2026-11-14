@@ -223,8 +223,11 @@ datetime is `acq_date` plus those hours and minutes.
 | 30–79 | `n` | `nominal` |
 | 80–100 | `h` | `high` |
 
-**Grid cells.** `cell = (floor(lat / GRID_DEG), floor(lon / GRID_DEG))`. Use `floor`, never
-truncate: `floor(-17.8757 / 0.05)` is `-358`, but `int()` gives `-357`.
+**Grid cells.** `cell = (floor(round(lat / GRID_DEG, 6)), floor(round(lon / GRID_DEG, 6)))`. Use
+`floor`, never truncate: `floor(-17.8757 / 0.05)` is `-358`, but `int()` gives `-357`. Round to 6
+decimals first: `0.05` is not exact in binary floating point, so `0.3 / 0.05` is
+`5.999999999999999` and a plain `floor` would put an on-edge coordinate in the cell below.
+Rounding to 6 decimals only moves values that sit exactly on an edge.
 
 **Reference numbers.** `sample-data/` (restored in Stage 0) holds two FIRMS NRT CSVs for the
 East Bolivia box (W −64, S −18, E −60, N −14): `modis.csv` from `MODIS_NRT` and `viirs.csv`
@@ -572,7 +575,7 @@ One row per (cell, local date, platform) with at least one detection that passes
 
 | column | type |
 |---|---|
-| `cell_lat_idx`, `cell_lon_idx` | int32: `floor(lat / GRID_DEG)`, `floor(lon / GRID_DEG)` |
+| `cell_lat_idx`, `cell_lon_idx` | int32: `floor(round(lat / GRID_DEG, 6))`, `floor(round(lon / GRID_DEG, 6))` |
 | `tile_id` | string: `f"{floor(lat / TILE_DEG)}_{floor(lon / TILE_DEG)}"` |
 | `date_local` | date |
 | `platform` | string |
@@ -966,7 +969,8 @@ Done when:
 
 Goal: count fire **cell-days** instead of raw detections (section 2.4 explains why).
 
-- `grid.py`: cell index and tile id helpers. Use `floor`: `floor(-17.8757 / 0.05) = -358`.
+- `grid.py`: cell index and tile id helpers. Round to 6 decimals before `floor`:
+  `floor(round(-17.8757 / 0.05, 6)) = -358`, `floor(round(0.3 / 0.05, 6)) = 6`.
 - `celldays.py`: `build_celldays(detections, settings) -> DataFrame` (pure function). Apply the
   confidence and `type` filters, then group by (cell, `date_local`, platform). Keep all
   platforms; Stage 3 chooses which to use.

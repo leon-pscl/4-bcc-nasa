@@ -23,7 +23,7 @@ STATE_FILE = "_state.json"
 DATA_VERSION_FILE = "data_version.json"
 WRITER_LOCK = "_writer.lock"
 # bump when pipeline logic changes in a way that must invalidate partition fingerprints
-PIPELINE_VERSION = 5
+PIPELINE_VERSION = 6
 
 
 def processed_root(settings):
