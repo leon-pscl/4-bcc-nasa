@@ -151,7 +151,7 @@ def test_date_local_must_be_date():
 def test_basis_validator():
     from firecal.contracts import validate_harmonized
     import pandas as pd
-    for b in ("viirs", "viirs_noaa20", "viirs_noaa21", "modis_scaled", "modis_gapfill"):
+    for b in ("viirs", "viirs_noaa20", "viirs_noaa21", "modis_scaled", "modis_gapfill", "terra_gapfill"):
         df = pd.DataFrame({
             "region": pd.array(["x"], dtype="string"),
             "cell_lat_idx": pd.array([1], dtype="int32"),

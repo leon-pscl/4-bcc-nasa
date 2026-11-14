@@ -41,10 +41,9 @@ def test_acq_time_parsing(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight\n1,2,3,1,1,2024-01-01,18,A,Aqua,50,6.1NRT,3,1,D\n1,2,3,1,1,2024-01-01,1947,A,Aqua,50,6.1NRT,3,1,D\n")
     df = read_firms_csv(str(p))
-    assert df.iloc[0]["acq_datetime_utc"].hour == 0
-    assert df.iloc[0]["acq_datetime_utc"].minute == 18
-    assert df.iloc[1]["acq_datetime_utc"].hour == 19
-    assert df.iloc[1]["acq_datetime_utc"].minute == 47
+    times = sorted(df["acq_datetime_utc"].tolist())
+    assert (times[0].hour, times[0].minute) == (0, 18)
+    assert (times[1].hour, times[1].minute) == (19, 47)
 
 
 def test_idempotent_merge(tmp_path):

@@ -43,6 +43,7 @@ def main():
         ("api_hotspots.json", f"/api/hotspots?{q}&page=1&page_size=100&all_sensors=1"),
         ("api_coverage.json", "/api/coverage"),
         ("api_methods.json", "/api/methods?region=southeast_asia"),
+        ("api_series.json", f"/api/series?{q}"),
     ]
     for name, url in endpoints:
         resp = client.get(url)

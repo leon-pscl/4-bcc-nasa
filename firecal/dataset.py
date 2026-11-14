@@ -1,7 +1,8 @@
 """Dataset layer: Hive-partitioned Parquet, incremental state and C7 data versions.
 
 Every dataset lives in `data/processed/<name>/` and is partitioned by `region` and
-`year` (DuckDB `COPY ... PARTITION_BY (region, year)`). A state file records, per
+`year` (DuckDB `COPY ... PARTITION_BY (region, year)`), except `cell_cover`, which is
+partitioned by `year` only (it is region-agnostic). A state file records, per
 partition, a fingerprint of the inputs it was built from; only partitions whose
 inputs changed are rebuilt.
 """
@@ -15,13 +16,14 @@ from pathlib import Path
 DETECTIONS = "detections"
 CELLDAYS = "celldays"
 HARMONIZED = "harmonized_daily"
+COVER = "cell_cover"
 SERIES_DAYS_FILE = "series_days.parquet"
 
 STATE_FILE = "_state.json"
 DATA_VERSION_FILE = "data_version.json"
 WRITER_LOCK = "_writer.lock"
 # bump when pipeline logic changes in a way that must invalidate partition fingerprints
-PIPELINE_VERSION = 3
+PIPELINE_VERSION = 5
 
 
 def processed_root(settings):
@@ -149,6 +151,22 @@ def write_partition(con, sql, settings, name, region, year, post_check=None):
         f"PARTITION_BY (region, year))"
     )
     try:
+        # rows written must equal rows the SQL selected; otherwise the target
+        # must not be touched. An empty staging dir is a valid empty partition.
+        src_n = con.execute(f"SELECT COUNT(*) FROM ({sql})").fetchone()[0]
+        if src_n > 0:
+            files = list(tmp.rglob("*.parquet"))
+            if not files:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise ValueError(f"write_partition: SQL selected {src_n} rows but staging holds 0 files "
+                                 f"({name}/{region}/{year}) — refusing to publish")
+            stg = f"read_parquet('{tmp.as_posix()}/region=*/year=*/*.parquet')"
+            dst_n = con.execute(f"SELECT COUNT(*) FROM {stg}").fetchone()[0]
+            if src_n != dst_n:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise ValueError(
+                    f"write_partition row mismatch: selected {src_n} rows, staging holds {dst_n} "
+                    f"({name}/{region}/{year}) — refusing to publish")
         if post_check is not None:
             post_check(con, tmp)
     except Exception:
@@ -184,6 +202,11 @@ def read_dataset(settings, name, regions=None):
     root = dataset_dir(settings, name)
     if not root.exists():
         return "(SELECT NULL WHERE FALSE)"
+    if name == COVER:
+        if regions is None:
+            return f"read_parquet('{root.as_posix()}/**/*.parquet')"
+        # cover has no region partition; pages already restrict by cell idx
+        return f"read_parquet('{root.as_posix()}/**/*.parquet')"
     if regions:
         parts = [f"read_parquet('{root.as_posix()}/region={r}/**/*.parquet')" for r in regions]
         if len(parts) == 1:

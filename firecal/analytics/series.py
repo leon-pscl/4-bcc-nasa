@@ -55,9 +55,10 @@ def _k_aqua_view(con, cal_path):
     """)
 
 
-def seam_series(area, start, end, settings, region=None):
+def seam_series(area, start, end, settings, region=None, cover="all"):
     import duckdb
     import os
+    from firecal.analytics.cover import cover_exists
 
     con = duckdb.connect()
     con.execute("PRAGMA threads=4")
@@ -66,14 +67,17 @@ def seam_series(area, start, end, settings, region=None):
     celldays = read_dataset(settings, "celldays", [region] if region else None)
     harmonized = read_dataset(settings, HARMONIZED, [region] if region else None)
     cell_filter = area.bbox_sql(area)
+    cover_pred_cd = cover_exists(settings, cover, "cd")
+    cover_pred_h = cover_exists(settings, cover, "h")
     start_s, end_s = str(start), str(end)
 
     # one small scan: (date, platform) counts, region-wide, for the query range
     con.execute(f"""
         CREATE OR REPLACE TEMP VIEW daily AS
         SELECT region, date_local, platform, COUNT(*)::DOUBLE AS cd
-        FROM {celldays}
+        FROM {celldays} AS cd
         WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
+          AND ({cover_pred_cd})
         GROUP BY 1,2,3
     """)
 
@@ -94,8 +98,9 @@ def seam_series(area, start, end, settings, region=None):
         + ("WHERE region = '" + region.replace("'", "''") + "' " if region else "")
         + "ORDER BY 1").fetchall()
     switch_date = getattr(settings, "SWITCH_DATE", "2012-02-01")
+    snpp_end = getattr(settings, "SNPP_END", "2026-11-02")
     outage_days = [str(r[0])[:10] for r in outage_rows
-                   if str(r[0])[:10] >= switch_date]
+                   if switch_date <= str(r[0])[:10] <= snpp_end]
 
     # raw platform cell-days per month for the area, and the S-NPP overlap per
     # month (outage days excluded), computed in ONE scan of the area's cells
@@ -109,7 +114,7 @@ def seam_series(area, start, end, settings, region=None):
                      WHERE o.region = cd.region AND o.date_local = cd.date_local)) AS overlap_n
         FROM {celldays} AS cd
         WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
-          AND ({cell_filter})
+          AND ({cell_filter}) AND ({cover_pred_cd})
         GROUP BY 1,2,3
     """).fetchall()
     raw = {p: {} for p in ("Aqua", "SNPP", "NOAA20", "NOAA21")}
@@ -131,11 +136,11 @@ def seam_series(area, start, end, settings, region=None):
               SELECT region, EXTRACT(year FROM date_local)::INTEGER AS y,
                      EXTRACT(month FROM date_local)::INTEGER AS m,
                      tile_id, COUNT(*)::DOUBLE AS n
-              FROM {celldays}
+              FROM {celldays} AS cd
               WHERE platform = 'Aqua'
                 AND date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
                 AND (region, date_local) NOT IN (SELECT region, date_local FROM outage)
-                AND ({cell_filter})
+                AND ({cell_filter}) AND ({cover_pred_cd})
               GROUP BY 1,2,3,4
             ) AS cd
             LEFT JOIN k_tile k ON k.region = cd.region
@@ -156,9 +161,9 @@ def seam_series(area, start, end, settings, region=None):
         SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
                EXTRACT(month FROM date_local)::INTEGER AS m,
                SUM(value) AS v
-        FROM {harmonized}
+        FROM {harmonized} AS h
         WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
-          AND ({cell_filter})
+          AND ({cell_filter}) AND ({cover_pred_h})
         GROUP BY 1,2
     """).fetchall()
     harmonized = {(y, m): v for y, m, v in harm_rows}
@@ -172,14 +177,34 @@ def seam_series(area, start, end, settings, region=None):
     # area validation over the overlap months (post-switch, both sensors up)
     overlap = [(y, m) for (y, m) in months
                if f"{y}-{m:02d}" >= switch_date[:7] and (y, m) in viirs_ov]
-    overlap_years = sorted({y for (y, m) in overlap})
-    metrics = _metrics([(viirs_ov[(y, m)], aqua_k.get((y, m), 0.0) or 0.0)
-                        for (y, m) in overlap])
+    cal_years = tuple(getattr(settings, "CALIBRATION_YEARS", ()) or ())
+    held_out_years = tuple(getattr(settings, "VALIDATION_YEARS", ()) or ())
+    all_pairs = [(y, m, viirs_ov[(y, m)], aqua_k.get((y, m), 0.0) or 0.0)
+                 for (y, m) in overlap]
+    held_pairs = [p for p in all_pairs if p[0] not in cal_years]
+    metrics = _metrics([(p[2], p[3]) for p in held_pairs])
     per_year = {}
-    for y in overlap_years:
-        ym = [(yy, mm) for (yy, mm) in overlap if yy == y]
-        per_year[str(y)] = _metrics([(viirs_ov[(yy, mm)], aqua_k.get((yy, mm), 0.0) or 0.0)
-                                     for (yy, mm) in ym])
+    for y in sorted({p[0] for p in all_pairs}):
+        ym = [p for p in all_pairs if p[0] == y]
+        m = _metrics([(p[2], p[3]) for p in ym])
+        m["months"] = len(ym)
+        per_year[str(y)] = m
+    in_sample = {}
+    for y in sorted({p[0] for p in all_pairs if p[0] in cal_years}):
+        ym = [p for p in all_pairs if p[0] == y]
+        m = _metrics([(p[2], p[3]) for p in ym])
+        m["months"] = len(ym)
+        in_sample[str(y)] = m
+    fit_months = sum(m["months"] for m in in_sample.values())
+    held_complete = [y for y in sorted({p[0] for p in held_pairs})
+                     if sum(1 for p in held_pairs if p[0] == y) == 12
+                     and y in held_out_years] or [y for y in sorted({p[0] for p in held_pairs})
+                                                  if sum(1 for p in held_pairs if p[0] == y) == 12]
+    err_years = held_complete if held_complete else sorted({p[0] for p in held_pairs})
+    typical_err = None
+    if err_years:
+        errs = sorted(abs(per_year[str(y)]["bias_pct"]) for y in err_years)
+        typical_err = float(errs[len(errs) // 2]) if len(errs) % 2 else float((errs[len(errs) // 2 - 1] + errs[len(errs) // 2]) / 2)
 
     con.close()
     return {
@@ -193,13 +218,26 @@ def seam_series(area, start, end, settings, region=None):
         "harmonized": series(harmonized),
         "outage_days": outage_days,
         "validation": {
-            "overlap_years": overlap_years,
+            "overlap_years": sorted({p[0] for p in all_pairs}),
+            "fit_years": list(cal_years),
+            "held_out_years": list(held_out_years),
             "pearson_r": metrics["pearson_r"],
             "bias_pct": metrics["bias_pct"],
-            "per_year": {str(y): {"pearson_r": per_year[str(y)]["pearson_r"],
-                                  "bias_pct": per_year[str(y)]["bias_pct"]}
-                         for y in overlap_years},
+            "held_out_months": len(held_pairs),
+            "in_sample_months": fit_months,
+            "per_year": {str(y): {"pearson_r": m["pearson_r"], "bias_pct": m["bias_pct"],
+                                  "months": m["months"]}
+                         for y, m in per_year.items()},
+            "in_sample": {str(y): {"pearson_r": m["pearson_r"], "bias_pct": m["bias_pct"],
+                                   "months": m["months"]}
+                          for y, m in in_sample.items()},
+            "typical_year_error_pct": typical_err,
             "note": "Aqua x k vs S-NPP, months where both sensors read region-wide and "
-                    "VIIRS >= 10 cell-days; sensor-outage days are excluded on both sides.",
+                    "VIIRS >= 10 cell-days; sensor-outage days are excluded on both sides. "
+                    "Aggregate metrics and per-year are over held-out months only "
+                    "(fit_years in the calibration block); typical_year_error_pct is the "
+                    "median |bias %| over held-out complete (12-month) years. "
+                    f"outage_days stop at S-NPP's planned end ({snpp_end}, D15); days after "
+                    "it are NOAA-20/21, not outages.",
         },
     }

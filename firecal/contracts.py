@@ -31,6 +31,12 @@ HARMONIZED_COLUMNS: List[str] = [
     "region", "cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis",
 ]
 
+# C9: per-cell cover (MCD12Q1 500 m, yearly)
+COVER_COLUMNS: List[str] = [
+    "region", "cell_lat_idx", "cell_lon_idx", "year", "cover_class",
+    "forest_pct", "crop_pct", "other_veg_pct", "land_pixels",
+]
+
 
 def _check_columns(df: pd.DataFrame, required: List[str], name: str) -> None:
     missing = [c for c in required if c not in df.columns]
@@ -109,6 +115,12 @@ HARMONIZED_DTYPES = {
     "basis": "string",
 }
 
+COVER_DTYPES = {
+    "region": "string", "cell_lat_idx": "int32", "cell_lon_idx": "int32", "year": "int16",
+    "cover_class": "string", "forest_pct": "int8", "crop_pct": "int8",
+    "other_veg_pct": "int8", "land_pixels": "int32",
+}
+
 
 def validate_detections(df: pd.DataFrame) -> None:
     _check_columns(df, DETECTIONS_COLUMNS, "detections")
@@ -127,7 +139,26 @@ def validate_calibration(df: pd.DataFrame) -> None:
     _check_dtypes(df, {k: v for k, v in CALIBRATION_DTYPES.items() if v != "date"}, "calibration")
 
 
-VALID_BASIS = {"viirs", "viirs_noaa20", "viirs_noaa21", "modis_scaled", "modis_gapfill"}
+VALID_BASIS = {"viirs", "viirs_noaa20", "viirs_noaa21", "modis_scaled", "modis_gapfill", "terra_gapfill"}
+VALID_COVER_CLASS = {"forest", "farmland", "other_vegetation", "other"}
+
+
+def validate_cover(df: pd.DataFrame) -> None:
+    _check_columns(df, COVER_COLUMNS, "cell_cover")
+    _check_dtypes(df, {k: v for k, v in COVER_DTYPES.items() if v != "date"}, "cell_cover")
+    bad = set(df["cover_class"].dropna().unique()) - VALID_COVER_CLASS
+    if bad:
+        raise ValueError(f"cell_cover: unknown cover_class values: {sorted(bad)}")
+    for col in ("forest_pct", "crop_pct", "other_veg_pct"):
+        vals = df[col].dropna()
+        if len(vals) and (vals < 0).any():
+            raise ValueError(f"cell_cover: {col} must be 0..100, got min {vals.min()}")
+    if "year" in df.columns:
+        ys = df["year"].dropna()
+        if len(ys) and ((ys < 2001) | (ys > 2025)).any():
+            raise ValueError(f"cell_cover: year out of range 2001..2025")
+    if (df["land_pixels"] <= 0).any():
+        raise ValueError("cell_cover: land_pixels must be > 0 (water cells carry no row)")
 
 
 def validate_harmonized(df: pd.DataFrame) -> None:
