@@ -44,12 +44,16 @@ def main():
         ("api_coverage.json", "/api/coverage"),
         ("api_methods.json", "/api/methods?region=southeast_asia"),
         ("api_series.json", f"/api/series?{q}"),
-        ("api_calendar_forest.json", f"/api/calendar?{q}&cover=forest"),
-        ("api_summary_forest.json", f"/api/summary?{q}&cover=forest"),
-        ("api_map_forest.json", f"/api/map?{q}&cover=forest"),
-        ("api_hotspots_forest.json", f"/api/hotspots?{q}&page=1&page_size=100&all_sensors=1&cover=forest"),
-        ("api_series_forest.json", f"/api/series?{q}&cover=forest"),
     ]
+    # cover variants: forest, farmland, other (same bbox, same range)
+    for cover in ("forest", "farmland", "other"):
+        endpoints += [
+            (f"api_calendar_{cover}.json", f"/api/calendar?{q}&cover={cover}"),
+            (f"api_summary_{cover}.json", f"/api/summary?{q}&cover={cover}"),
+            (f"api_map_{cover}.json", f"/api/map?{q}&cover={cover}"),
+            (f"api_hotspots_{cover}.json", f"/api/hotspots?{q}&page=1&page_size=100&all_sensors=1&cover={cover}"),
+            (f"api_series_{cover}.json", f"/api/series?{q}&cover={cover}"),
+        ]
     for name, url in endpoints:
         resp = client.get(url)
         assert resp.status_code == 200, (name, resp.status_code, resp.get_data(as_text=True)[:300])
