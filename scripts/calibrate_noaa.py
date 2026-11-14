@@ -8,11 +8,10 @@ import argparse, os, statistics, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import duckdb
-
 from firecal.config import Settings
 from firecal.dataset import read_dataset
 from firecal.harmonize.db import _metrics
+from firecal.duck import connect
 
 OVERLAP = {
     "NOAA20": (2018, 2025),   # calibration 2018-2023, validation 2024-2025
@@ -26,9 +25,7 @@ def main():
     ap.add_argument("--min-celldays", type=int, default=30)
     args = ap.parse_args()
     settings = Settings.from_env()
-    con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='4GB'")
+    con = connect(settings, "pipeline")
     cd = read_dataset(settings, "celldays", [args.region])
     con.execute("CREATE OR REPLACE TEMP VIEW cd_v AS SELECT * FROM " + cd)
 

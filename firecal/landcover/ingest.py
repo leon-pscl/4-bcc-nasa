@@ -87,7 +87,6 @@ def _granule_year(path):
 
 def build_cell_cover(settings, files=None, dry_run=False):
     """Every .tif granule in data/raw/landcover -> cell_cover/region=/year= hive."""
-    import duckdb
     import pandas as pd
     import rasterio
 
@@ -106,6 +105,7 @@ def build_cell_cover(settings, files=None, dry_run=False):
     region_of = np.array(names, dtype=object)
 
     written = []
+    os.makedirs(settings.DATA_PROCESSED, exist_ok=True)
     root = os.path.join(settings.DATA_PROCESSED, "cell_cover")
     for path in files:
         year = _granule_year(path)
@@ -117,12 +117,8 @@ def build_cell_cover(settings, files=None, dry_run=False):
         if df is None:
             print("skipped", path, "(no land pixels)")
             continue
-        con = duckdb.connect()
-        con.execute("PRAGMA threads=2")
-        con.execute("PRAGMA memory_limit='4GB'")
-        tmp_root = os.path.join(settings.DATA_PROCESSED, "_duckdb_tmp")
-        os.makedirs(tmp_root, exist_ok=True)
-        con.execute(f"PRAGMA temp_directory='{tmp_root.replace(os.sep, '/')}'")
+        from firecal.duck import connect
+        con = connect(settings, "pipeline")
         con.register("cov", df)
         sql = ("SELECT region, cell_lat_idx, cell_lon_idx, "
                "CAST(year AS SMALLINT) AS year, cover_class, "

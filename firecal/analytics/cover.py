@@ -12,10 +12,9 @@ def _max_year(settings):
     if cov.startswith("(SELECT NULL"):
         return None
     if cov not in _max_year_cache:
-        import duckdb
-        con = duckdb.connect()
+        from firecal.duck import connect
+        con = connect(settings, "web")
         try:
-            con.execute("PRAGMA threads=2")
             row = con.execute(f"SELECT MAX(year) FROM {cov}").fetchone()
             _max_year_cache[cov] = int(row[0]) if row and row[0] is not None else None
         finally:

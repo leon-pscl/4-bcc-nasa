@@ -34,7 +34,7 @@ def _probe_harmonized(settings):
     """Open one harmonized partition (latest year, first file). (ok, detail)."""
     try:
         import glob
-        import duckdb
+        from firecal.duck import connect
         root = os.path.join(settings.DATA_PROCESSED, "harmonized_daily")
         cand = glob.glob(os.path.join(root, "region=*", "year=*", "*.parquet"))
         if not cand:
@@ -47,10 +47,8 @@ def _probe_harmonized(settings):
         cand.sort(key=lambda p: (_y(p), p))
         pick = cand[-1]
         rel = os.path.relpath(pick, settings.DATA_PROCESSED)
-        con = duckdb.connect()
+        con = connect(settings, "web")
         try:
-            con.execute("PRAGMA threads=1")
-            con.execute("PRAGMA memory_limit='512MB'")
             con.execute(f"SELECT COUNT(*) FROM read_parquet('{pick.replace(os.sep, '/')}')").fetchone()
         finally:
             con.close()
@@ -84,15 +82,25 @@ def create_app(settings=None, dist_dir=None):
     app.debug = os.environ.get("FLASK_DEBUG", "0") == "1"  # default off; never the network debugger
     app.config["SETTINGS"] = settings
 
-    # in-process response cache, keyed on (path, args, data_version); bounded LRU
+    # in-process response cache, keyed on (path, args, data_version); bounded LRU by bytes
     cache = OrderedDict()
-    cache_limit = int(getattr(settings, "API_CACHE_ENTRIES", 512) or 512)
+    cache_limit_bytes = int(getattr(settings, "API_CACHE_MB", 32) or 32) * 1024 * 1024
+    cache_bytes = 0
+
+    def _cache_size(value):
+        body, ct, _ = value
+        return len(body) + len(ct or "") + 64
 
     def cache_put(key, value):
+        nonlocal cache_bytes
+        old = cache.pop(key, None)
+        if old is not None:
+            cache_bytes -= _cache_size(old)
         cache[key] = value
-        cache.move_to_end(key)
-        while len(cache) > cache_limit:
-            cache.popitem(last=False)
+        cache_bytes += _cache_size(value)
+        while cache and cache_bytes > cache_limit_bytes:
+            _, evicted = cache.popitem(last=False)
+            cache_bytes -= _cache_size(evicted)
 
     def cache_get(key):
         value = cache.get(key)
@@ -337,13 +345,12 @@ def create_app(settings=None, dist_dir=None):
         area, start, end, today, region, coverage_warning = area_args()
         all_sensors = request.args.get("all_sensors", "0") == "1"
         cover = cover_arg()
-        import duckdb
         from firecal.analytics.cover import cover_exists_latlon
         from firecal.analytics.export import (_series_days_relation, _area_where,
                                               _source_filters)
-        con = duckdb.connect()
+        from firecal.duck import connect
+        con = connect(settings, "web")
         try:
-            con.execute("PRAGMA threads=2")
             root = read_dataset(settings, DETECTIONS, [region] if region else None)
             cl = _area_where(area)
             conf_sql, type_sql = _source_filters(settings)
@@ -449,20 +456,21 @@ def create_app(settings=None, dist_dir=None):
         cal_path = os.path.join(settings.DATA_PROCESSED, "calibration.parquet")
         if not os.path.exists(cal_path):
             return _json_response({"error": "region calibration not available", "field": "region"}, status=422)
-        import duckdb
-        con = duckdb.connect()
-        con.execute("PRAGMA threads=2")
-        krows = con.execute(
-            "SELECT platform, k FROM read_parquet(?) "
-            "WHERE region = ? AND level = 'tile_month' AND platform = 'Aqua'",
-            [cal_path, region]).fetchall()
-        if not krows:
-            return _json_response({"error": "region not available", "field": "region"}, status=422)
-        level_counts = dict(con.execute(
-            "SELECT level, COUNT(*) FROM read_parquet(?) "
-            "WHERE region = ? AND platform = 'Aqua' GROUP BY 1",
-            [cal_path, region]).fetchall())
-        con.close()
+        from firecal.duck import connect
+        con = connect(settings, "web")
+        try:
+            krows = con.execute(
+                "SELECT platform, k FROM read_parquet(?) "
+                "WHERE region = ? AND level = 'tile_month' AND platform = 'Aqua'",
+                [cal_path, region]).fetchall()
+            if not krows:
+                return _json_response({"error": "region not available", "field": "region"}, status=422)
+            level_counts = dict(con.execute(
+                "SELECT level, COUNT(*) FROM read_parquet(?) "
+                "WHERE region = ? AND platform = 'Aqua' GROUP BY 1",
+                [cal_path, region]).fetchall())
+        finally:
+            con.close()
         # read the requested region's validation file (C5), falling back to the
         # legacy single validation.json for older data sets
         val_path = os.path.join(settings.DATA_PROCESSED, "validation", region + ".json")

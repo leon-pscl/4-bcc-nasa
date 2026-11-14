@@ -62,7 +62,6 @@ class Settings:
         "NOAA21": ("VIIRS_NOAA21_SP", "VIIRS_NOAA21_NRT"),
     })
     FIRMS_DAY_RANGE_MAX: int = 5
-    API_CACHE_ENTRIES: int = 512
     FIRMS_TX_BUDGET: int = 4000
     FIRMS_TX_WINDOW: int = 600
     FIRMS_RETRIES: int = 5
@@ -71,10 +70,16 @@ class Settings:
     VIIRS_SP_START: str = "2012-01-20"
     NOAA20_SP_START: str = "2018-04-01"
     NOAA21_SP_START: str = "2023-03-01"
+    API_CACHE_MB: int = 32
 
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"
     FIRMS_MAP_KEY: str = field(default="", repr=False)
+    DUCKDB_WEB_MEMORY_LIMIT: str = "512MB"
+    DUCKDB_WEB_THREADS: int = 2
+    DUCKDB_PIPELINE_MEMORY_LIMIT: str = "2GB"
+    DUCKDB_PIPELINE_THREADS: int = 4
+    DUCKDB_TEMP_DIR: str = "/tmp/duckdb"
 
     @classmethod
     def from_env(cls, env_path: str = ".env") -> "Settings":
@@ -83,10 +88,21 @@ class Settings:
         s.DATA_RAW = os.environ.get("DATA_RAW", file_values.get("DATA_RAW", s.DATA_RAW))
         s.DATA_PROCESSED = os.environ.get("DATA_PROCESSED", file_values.get("DATA_PROCESSED", s.DATA_PROCESSED))
         s.FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", file_values.get("FIRMS_MAP_KEY", s.FIRMS_MAP_KEY))
-        raw_cache = os.environ.get("API_CACHE_ENTRIES", file_values.get("API_CACHE_ENTRIES"))
-        if raw_cache:
+        cache_mb = os.environ.get("API_CACHE_MB", file_values.get("API_CACHE_MB"))
+        if cache_mb:
             try:
-                s.API_CACHE_ENTRIES = int(raw_cache)
+                s.API_CACHE_MB = int(cache_mb)
             except ValueError:
                 pass
+        for key in ("DUCKDB_WEB_MEMORY_LIMIT", "DUCKDB_PIPELINE_MEMORY_LIMIT", "DUCKDB_TEMP_DIR"):
+            val = os.environ.get(key, file_values.get(key))
+            if val:
+                setattr(s, key, val)
+        for key in ("DUCKDB_WEB_THREADS", "DUCKDB_PIPELINE_THREADS"):
+            val = os.environ.get(key, file_values.get(key))
+            if val:
+                try:
+                    setattr(s, key, int(val))
+                except ValueError:
+                    pass
         return s

@@ -12,37 +12,37 @@ from firecal.dataset import read_dataset
 
 def calendar_matrix(area, start, end, today, settings, region=None, cover="all"):
     """C6 calendar shape. `today` is the latest data date (never the server clock)."""
-    import duckdb
     from firecal.analytics.cover import cover_exists
+    from firecal.duck import connect
 
-    con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='4GB'")
+    con = connect(settings, "web")
     root = read_dataset(settings, "harmonized_daily", [region] if region else None)
     cell_filter = area.bbox_sql(area)
     cover_pred = cover_exists(settings, cover, "h")
-    rows = con.execute(f"""
-        SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
-               EXTRACT(month FROM date_local)::INTEGER AS m,
-               SUM(value) AS v
-        FROM {root} AS h
-        WHERE date_local >= DATE '{start}' AND date_local <= DATE '{end}'
-          AND ({cell_filter}) AND ({cover_pred})
-        GROUP BY 1,2
-    """).fetchall()
-    # the baseline is the complete years of the region's full record before the
-    # current year, independent of the requested range (spec section 7).
-    # Medians are taken over the full record inside the area, not over [start, end].
-    full_rows = con.execute(f"""
-        SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
-               EXTRACT(month FROM date_local)::INTEGER AS m,
-               SUM(value) AS v
-        FROM {root} AS h
-        WHERE ({cell_filter}) AND ({cover_pred})
-        GROUP BY 1,2
-    """).fetchall()
-    bounds = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS h WHERE ({cover_pred})").fetchone()
-    con.close()
+    try:
+        rows = con.execute(f"""
+            SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
+                   EXTRACT(month FROM date_local)::INTEGER AS m,
+                   SUM(value) AS v
+            FROM {root} AS h
+            WHERE date_local >= DATE '{start}' AND date_local <= DATE '{end}'
+              AND ({cell_filter}) AND ({cover_pred})
+            GROUP BY 1,2
+        """).fetchall()
+        # the baseline is the complete years of the region's full record before the
+        # current year, independent of the requested range (spec section 7).
+        # Medians are taken over the full record inside the area, not over [start, end].
+        full_rows = con.execute(f"""
+            SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
+                   EXTRACT(month FROM date_local)::INTEGER AS m,
+                   SUM(value) AS v
+            FROM {root} AS h
+            WHERE ({cell_filter}) AND ({cover_pred})
+            GROUP BY 1,2
+        """).fetchall()
+        bounds = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS h WHERE ({cover_pred})").fetchone()
+    finally:
+        con.close()
     matrix = {}
     for y, m, v in rows:
         matrix.setdefault(y, {})[m] = float(v)

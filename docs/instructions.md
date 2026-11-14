@@ -429,7 +429,7 @@ in one place.
 | `NRT_REFRESH_DAYS` | `7` | NRT chunks ending within this many days of today are always fetched again, because NRT data keeps changing |
 | `VIIRS_SP_START` | `2012-01-20` | First date of VIIRS 375 m data; never request VIIRS before this |
 | `REFERENCE_PLATFORM` | `"SNPP"` | The satellite every other one is calibrated to. Aqua MODIS is calibrated to it now; NOAA-20/21 can be added later without changing C4 (decision D9) |
-| `API_CACHE_ENTRIES` | `512` | Size of the server-side response cache (Stage 5). Entries are keyed by data version, so a pipeline run makes them stale automatically |
+| `API_CACHE_MB` | `32` | Size of the server-side response cache (Stage 5) in MB. Entries are keyed by data version, so a pipeline run makes them stale automatically |
 | `FIRECAL_TODAY` | *(unset)* | **Test-only** clock override for `/health`, `YYYY-MM-DD`. When set, `/health` computes `age_days` from it instead of the server clock, so the staleness check can be exercised deterministically. Unset in normal runs |
 | UI unit label | "Hotspots (harmonized)" | The Methods tab explains the unit: one fire cell-day in VIIRS-equivalent terms |
 
@@ -1177,8 +1177,8 @@ Goal: serve Stage 4 over HTTP with the C6 shapes.
     partial overlap returns 200 with `coverage_warning`.
   - `today` comes from C7, never the server clock (section 5.2).
   - Every JSON response carries `data_version`, with `ETag` / `If-None-Match` → 304 (C6).
-  - A server-side LRU cache (`API_CACHE_ENTRIES`) keyed by path, query string and data
-    version. Starter areas and watchlist checks repeat the same queries.
+  - A server-side LRU cache (`API_CACHE_MB`) keyed by path, query string and data
+    version, bounded by bytes. Starter areas and watchlist checks repeat the same queries.
   - `/api/coverage` and `/health` follow the C6 shapes (regions, starter areas, freshness).
   - CSV downloads stream from a generator, with
     `Content-Disposition: attachment; filename=hotspots_<W>_<S>_<E>_<N>_<start>_<end>.csv`.

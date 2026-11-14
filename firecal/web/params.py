@@ -51,8 +51,8 @@ def latest_data_date(settings, region=None):
     for entry in cov:
         if entry.get("latest_date"):
             return max(e["latest_date"] for e in cov if e.get("latest_date"))
-    import duckdb
-    con = duckdb.connect()
+    from firecal.duck import connect
+    con = connect(settings, "web")
     try:
         root = read_dataset(settings, "harmonized_daily", [region] if region else None)
         row = con.execute(f"SELECT MAX(date_local) FROM {root}").fetchone()

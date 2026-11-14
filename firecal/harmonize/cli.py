@@ -33,12 +33,11 @@ def main(lock_fd=None):
         print(f"rebuilt {len(rebuilt)} harmonized partitions in {time.time() - t0:.1f}s")
 
         if args.region:
-            import duckdb
+            from firecal.duck import connect
             from firecal.dataset import read_dataset
             from firecal.harmonize.db import build_validation, calibration_sql
-            con = duckdb.connect()
+            con = connect(settings, "pipeline")
             try:
-                con.execute("PRAGMA threads=4")
                 cd = read_dataset(settings, CELLDAYS, [args.region])
                 shrink = getattr(settings, "SHRINK_M", 0)
                 cal = calibration_sql(cd, settings.CALIBRATION_YEARS,

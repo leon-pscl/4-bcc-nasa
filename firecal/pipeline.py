@@ -122,20 +122,16 @@ def run_update(region, all_regions, settings, recalibrate, summary):
         # 2. ingest
         def ingest():
             from firecal.ingest.db import ingest_files
-            from firecal.config import Settings
-            import duckdb
-            con = duckdb.connect()
-            con.execute("PRAGMA threads=1")
-            con.execute("PRAGMA memory_limit='1GB'")
-            con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
-            import sys as _sys
-            argv = _sys.argv[:]
-            files = fetched or ["data/raw/firms/*/*/*.csv"]
-            written, rows = ingest_files(con, files, r, settings.REGIONS[r], settings, dry_run=False)
-            print(f"rows: {rows}, partitions written: {len(written)}")
+            from firecal.duck import connect
+            con = connect(settings, "pipeline")
+            try:
+                files = fetched or ["data/raw/firms/*/*/*.csv"]
+                written, rows = ingest_files(con, files, r, settings.REGIONS[r], settings, dry_run=False)
+                print(f"rows: {rows}, partitions written: {len(written)}")
+            finally:
+                con.close()
             from firecal.dataset import write_data_versions
             write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
-            _sys.argv = argv
         _, d = _step("ingest", ingest)
         summary["steps"].append({"name": f"ingest:{r}", "duration_s": round(d, 2)})
 

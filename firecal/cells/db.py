@@ -4,9 +4,8 @@ Reads the detections dataset and writes Hive-partitioned cell-day partitions
 (region, year). Only partitions whose inputs changed are rebuilt.
 """
 
-import duckdb
-
 from firecal.dataset import fingerprint, partition_key, read_dataset, write_partition, PIPELINE_VERSION
+from firecal.duck import connect
 
 
 def validate_meta(meta, settings):
@@ -28,7 +27,7 @@ def build_celldays(detections, settings):
     df = detections.copy()
     if "region" not in df.columns:
         df["region"] = "test"
-    con = duckdb.connect()
+    con = connect(settings, "pipeline")
     try:
         con.register("det", df)
         sql = build_celldays_sql("det", settings.GRID_DEG, settings.TILE_DEG,
@@ -77,9 +76,7 @@ def rebuild(settings, region=None, force_years=None, state=None):
     state = state if state is not None else load_state(settings)
     ds_state = state.setdefault(CELLDAYS, {})
     det_state = state.get("detections", {})
-    con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
-    con.execute("PRAGMA memory_limit='4GB'")
+    con = connect(settings, "pipeline")
 
     src = read_dataset(settings, "detections", [region] if region else None)
     rebuilt = []

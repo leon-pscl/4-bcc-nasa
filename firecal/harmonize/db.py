@@ -8,9 +8,8 @@ import json
 import math
 import os
 
-import duckdb
-
 from firecal.dataset import fingerprint, read_dataset, write_partition, PIPELINE_VERSION, SERIES_DAYS_FILE
+from firecal.duck import connect
 
 
 def base_counts_sql(cd, cal_years, platform="Aqua", reference="SNPP"):
@@ -405,7 +404,7 @@ def fit_calibration(celldays, settings, shrink_m=None):
         df["region"] = "test"
     if not len(df):
         raise ValueError("no calibration years present in data")
-    con = duckdb.connect()
+    con = connect(settings, "pipeline")
     try:
         con.register("cd", df)
         cal = calibration_sql("cd", settings.CALIBRATION_YEARS,
@@ -444,7 +443,7 @@ def build_harmonized(celldays, calibration, settings):
     cd = celldays.copy()
     if "region" not in cd.columns:
         cd["region"] = "test"
-    con = duckdb.connect()
+    con = connect(settings, "pipeline")
     try:
         con.register("cd", cd)
         con.register("cal_final", calibration)
@@ -468,7 +467,7 @@ def validate(celldays, calibration, settings, harmonized=None):
     cd = celldays.copy()
     if "region" not in cd.columns:
         cd["region"] = "test"
-    con = duckdb.connect()
+    con = connect(settings, "pipeline")
     try:
         con.register("cd", cd)
         con.register("cal_rel", calibration)
@@ -505,10 +504,7 @@ def rebuild(settings, region=None, state=None):
     state = state if state is not None else load_state(settings)
     ds_state = state.setdefault(HARMONIZED, {})
     cal_state = state.setdefault("calibration", {})
-    con = duckdb.connect()
-    con.execute("PRAGMA threads=2")
-    con.execute("PRAGMA memory_limit='1500MB'")
-    con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
+    con = connect(settings, "pipeline")
 
     cd = read_dataset(settings, "celldays", [region] if region else None)
     cal_years = settings.CALIBRATION_YEARS

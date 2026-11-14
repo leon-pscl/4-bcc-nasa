@@ -16,14 +16,13 @@ import glob
 import sys
 from collections import Counter, defaultdict
 
-import duckdb
+from firecal.duck import connect
+from firecal.config import Settings
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-con = duckdb.connect()
-con.execute("PRAGMA threads=4")
-con.execute("PRAGMA memory_limit='6GB'")
+con = connect(Settings.from_env(), "pipeline")
 
 root = "data/processed/cell_cover/region=*/year=*/part*.parquet"
 rows = con.execute(

@@ -8,11 +8,10 @@ import argparse, os, statistics, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import duckdb
-
 from firecal.config import Settings
 from firecal.dataset import read_dataset
 from firecal.harmonize.db import _metrics
+from firecal.duck import connect
 
 AREAS = {
     "central_kalimantan": (110.7, -3.6, 115.9, 0.8),
@@ -30,8 +29,7 @@ def main():
     ap.add_argument("--calibration", default=None)
     args = ap.parse_args()
     settings = Settings.from_env()
-    con = duckdb.connect()
-    con.execute("PRAGMA threads=4")
+    con = connect(settings, "pipeline")
     h = read_dataset(settings, "harmonized_daily", [args.region])
     for name in args.areas:
         w, s, e, n = AREAS[name]

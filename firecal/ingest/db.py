@@ -9,9 +9,8 @@ import glob
 import os
 import shutil
 
-import duckdb
-
 from firecal.dataset import fingerprint, write_partition, dataset_dir
+from firecal.duck import connect as _connect
 
 MODIS_SATELLITES = {"Terra", "T", "Aqua", "A"}
 VIIRS_SATELLITES = {"N", "N20", "N21", "1", "2", "SNPP", "NOAA20", "NOAA21"}
@@ -96,10 +95,16 @@ QUALIFY ROW_NUMBER() OVER (PARTITION BY uid ORDER BY CASE WHEN processing = 'SP'
 """
 
 
-def connect(threads=4, memory_limit="4GB"):
-    con = duckdb.connect()
-    con.execute(f"PRAGMA threads={threads}")
-    con.execute(f"PRAGMA memory_limit='{memory_limit}'")
+def connect(settings=None, threads=None, memory_limit=None):
+    """Pipeline connection from Settings (tests may pass explicit overrides)."""
+    if settings is None:
+        from firecal.config import Settings
+        settings = Settings.from_env()
+    con = _connect(settings, "pipeline")
+    if threads is not None:
+        con.execute(f"PRAGMA threads={int(threads)}")
+    if memory_limit is not None:
+        con.execute(f"PRAGMA memory_limit='{memory_limit}'")
     return con
 
 

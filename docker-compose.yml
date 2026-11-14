@@ -9,6 +9,7 @@ services:
       - ./data:/app/data
     environment:
       - FLASK_DEBUG=0
+    mem_limit: 1.5g
     restart: unless-stopped
 
   updater:
@@ -22,4 +23,6 @@ services:
       - FLASK_DEBUG=0
       # .env is used by compose for interpolation; only the key is passed through
       - FIRMS_MAP_KEY=${FIRMS_MAP_KEY}
+    mem_limit: 4g
     restart: unless-stopped
+

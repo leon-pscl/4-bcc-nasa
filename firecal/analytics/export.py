@@ -10,7 +10,6 @@ and settings.KEEP_TYPES). Rows stream in 8k-row chunks from one query.
 import io
 import os
 
-import duckdb
 import pandas as pd
 
 from firecal.dataset import read_dataset, SERIES_DAYS_FILE
@@ -44,13 +43,11 @@ def _series_days_relation(con, settings, region):
 
 def hotspot_rows(area, start, end, settings, all_sensors=False, region=None, cover="all"):
     """Yield DataFrames of detection rows in the area/date range, in batches."""
-    import duckdb
+    from firecal.duck import connect
     from firecal.analytics.cover import cover_exists_latlon
 
-    con = duckdb.connect()
+    con = connect(settings, "web")
     try:
-        con.execute("PRAGMA threads=4")
-        con.execute("PRAGMA memory_limit='4GB'")
         root = read_dataset(settings, "detections", [region] if region else None)
 
         cl = _area_where(area)
@@ -101,11 +98,10 @@ def stream_hotspots_csv(area, start, end, settings, all_sensors=False, region=No
     yield "date_local,acq_datetime_utc,latitude,longitude,confidence_class,frp,daynight,sensor,platform,processing\n"
     for df in hotspot_rows(area, start, end, settings, all_sensors=all_sensors,
                            region=region, cover=cover):
-        for r in df.itertuples(index=False):
-            yield (f"{pd.to_datetime(r.date_local).strftime('%Y-%m-%d')},"
-                   f"{pd.to_datetime(r.acq_datetime_utc).isoformat()},"
-                   f"{r.latitude},{r.longitude},{r.confidence_class},{r.frp},{r.daynight},"
-                   f"{r.sensor},{r.platform},{r.processing}\n")
+        out = df.copy()
+        out["date_local"] = pd.to_datetime(out["date_local"]).dt.strftime("%Y-%m-%d")
+        out["acq_datetime_utc"] = pd.to_datetime(out["acq_datetime_utc"]).dt.strftime("%Y-%m-%dT%H:%M:%S")
+        yield out.to_csv(index=False, header=False, lineterminator="\n", na_rep="nan")
 
 
 def hotspots_csv(area, start, end, settings, all_sensors=False, region=None, cover="all"):
