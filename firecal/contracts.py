@@ -31,10 +31,10 @@ HARMONIZED_COLUMNS: List[str] = [
     "region", "cell_lat_idx", "cell_lon_idx", "tile_id", "date_local", "value", "basis",
 ]
 
-# C9: per-cell cover (MCD12C1, yearly)
+# C9: per-cell cover (MCD12Q1 500 m, yearly)
 COVER_COLUMNS: List[str] = [
-    "cell_lat_idx", "cell_lon_idx", "year", "cover_class",
-    "forest_pct", "crop_pct", "majority_confidence",
+    "region", "cell_lat_idx", "cell_lon_idx", "year", "cover_class",
+    "forest_pct", "crop_pct", "other_veg_pct", "land_pixels",
 ]
 
 
@@ -116,9 +116,9 @@ HARMONIZED_DTYPES = {
 }
 
 COVER_DTYPES = {
-    "cell_lat_idx": "int32", "cell_lon_idx": "int32", "year": "int16",
+    "region": "string", "cell_lat_idx": "int32", "cell_lon_idx": "int32", "year": "int16",
     "cover_class": "string", "forest_pct": "int8", "crop_pct": "int8",
-    "majority_confidence": "int8",
+    "other_veg_pct": "int8", "land_pixels": "int32",
 }
 
 
@@ -149,7 +149,7 @@ def validate_cover(df: pd.DataFrame) -> None:
     bad = set(df["cover_class"].dropna().unique()) - VALID_COVER_CLASS
     if bad:
         raise ValueError(f"cell_cover: unknown cover_class values: {sorted(bad)}")
-    for col in ("forest_pct", "crop_pct", "majority_confidence"):
+    for col in ("forest_pct", "crop_pct", "other_veg_pct"):
         vals = df[col].dropna()
         if len(vals) and (vals < 0).any():
             raise ValueError(f"cell_cover: {col} must be 0..100, got min {vals.min()}")
@@ -157,6 +157,8 @@ def validate_cover(df: pd.DataFrame) -> None:
         ys = df["year"].dropna()
         if len(ys) and ((ys < 2001) | (ys > 2025)).any():
             raise ValueError(f"cell_cover: year out of range 2001..2025")
+    if (df["land_pixels"] <= 0).any():
+        raise ValueError("cell_cover: land_pixels must be > 0 (water cells carry no row)")
 
 
 def validate_harmonized(df: pd.DataFrame) -> None:

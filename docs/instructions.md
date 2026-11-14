@@ -768,7 +768,7 @@ export builds the same table on the fly from `celldays` (slow but correct).
 ### C9 `cell_cover` (written by the landcover backfill, `python -m firecal.landcover.ingest`)
 
 Cover classes from IGBP Type 1: 1-5 = forest, 12/14 = farmland, 6-11 = other_vegetation,
-everything else (13,15,16,17,255) = other. API parameter `cover=all|forest|farmland|other` on
+13,15,16 = other (17 water and 255 fill are excluded). API parameter `cover=all|forest|farmland|other` on
 the area endpoints (calendar, summary, map, hotspots, the CSV export, series). A fire on
 date D is labelled with the cover of **year(D)-1**; the 2024 granule is used for 2025+
 (2025 and later), 2002 for 2003 if needed. `all` is the unfiltered default.
@@ -776,15 +776,15 @@ date D is labelled with the cover of **year(D)-1**; the 2024 granule is used for
 ### C9 layout and columns
 
 ```
-data/processed/cell_cover/year=YYYY/part.parquet
+data/processed/cell_cover/region=<name>/year=YYYY/part-<region>.parquet
 ```
 
-One row per `(cell_lat_idx, cell_lon_idx, year)`: `{cell_lat_idx, cell_lon_idx, year,
-cover_class, forest_pct, crop_pct, majority_confidence}`. `forest_pct` / `crop_pct` sum the
-percent bands of the IGBP classes in each 0.05 degree cell; `majority_confidence` is the
-majority-class confidence byte as-is (0..100, 255 stored as 0). Only cells in loaded regions
-are stored. Partitioned by `year` Hive-style, rebuilt by `build_cell_cover` (HDF4 read via
-pyhdf, deliberately not in requirements.txt).
+One row per `(region, cell_lat_idx, cell_lon_idx, year)`: `{region, cell_lat_idx, cell_lon_idx, year,
+cover_class, forest_pct, crop_pct, other_veg_pct, land_pixels}`. Percentages are the share of
+*land* pixels in the 0.05-degree cell (500 m MCD12Q1 pixels; water 17 and fill 255 are excluded);
+`cover_class` is the majority land group. Only cells in loaded regions are stored; partitioned by
+`region`/`year` Hive-style; rebuilt by `build_cell_cover` (rasterio read over the 500 m
+MCD12Q1 bands; rasterio is not in the runtime requirements).
 
 ---
 
