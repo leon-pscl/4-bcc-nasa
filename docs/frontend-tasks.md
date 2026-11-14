@@ -798,6 +798,9 @@ At the end of each sub-stage, follow `instructions.md` section 3: run `npm run c
       chart.
 
 ### 6i. Watchlist tab (5.6), new
+**Status: not shipped.** The tab list in the Shipping app offers Comparisons and
+Methods only; the hash `tab=watchlist` falls back to Comparisons. The placeholder
+code stays in the tree for when this is built; no UI, tests or docs promise it.
 - [ ] Local storage model, threshold, add/remove/open, ordering, every row state, the summary
       line.
 

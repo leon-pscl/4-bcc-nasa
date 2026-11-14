@@ -14,4 +14,9 @@ describe('urlState', () => {
     const h = toHash(state);
     expect(parseHash(h)).toEqual(state);
   });
+  it('tab=watchlist falls back to comparisons', () => {
+    expect(parseHash('#tab=watchlist').tab).toBeUndefined();
+    expect(parseHash('#tab=methods').tab).toBe('methods');
+    expect(parseHash('#tab=comparisons').tab).toBe('comparisons');
+  });
 });

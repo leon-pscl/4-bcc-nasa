@@ -23,11 +23,12 @@ describe('SidePanel', () => {
     const user = userEvent.setup();
     render(<SidePanel />);
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(2);
+    expect(screen.queryByRole('tab', { name: 'Watchlist' })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Comparisons' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'tab-comparisons');
-    await user.click(screen.getByRole('tab', { name: 'Watchlist' }));
-    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'watchlist' } });
+    await user.click(screen.getByRole('tab', { name: 'Methods' }));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'methods' } });
   });
 
   it('arrow keys move between tabs', async () => {
@@ -35,6 +36,6 @@ describe('SidePanel', () => {
     render(<SidePanel />);
     screen.getByRole('tab', { name: 'Comparisons' }).focus();
     await user.keyboard('{ArrowRight}');
-    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'watchlist' } });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'methods' } });
   });
 });
