@@ -1,6 +1,8 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: web
     ports:
       - "8080:8000"
     volumes:
@@ -10,7 +12,9 @@ services:
     restart: unless-stopped
 
   updater:
-    build: .
+    build:
+      context: .
+      target: pipeline
     command: sh -c "while true; do python -m firecal.pipeline update --all; sleep 86400; done"
     volumes:
       - ./data:/app/data

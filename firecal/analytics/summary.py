@@ -1,11 +1,32 @@
 """Summary analytics (Stage 4): totals, peaks, current-month vs baseline median."""
 
 import calendar as pycalendar
+import os
 
 import pandas as pd
 
 from firecal.analytics.stats import median, complete_years_before
 from firecal.dataset import read_dataset
+
+_rec_cache = {}
+
+
+def _rec_bounds(root, cover_pred, dv_mtime):
+    """(MIN, MAX date_local) over the region's record; keyed on the data-version file mtime."""
+    key = (root, cover_pred, dv_mtime)
+    hit = _rec_cache.get(key)
+    if hit is not None:
+        return hit
+    import duckdb
+    con = duckdb.connect()
+    try:
+        con.execute("PRAGMA threads=4")
+        con.execute("PRAGMA memory_limit='4GB'")
+        rec = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS h WHERE ({cover_pred})").fetchone()
+    finally:
+        con.close()
+    _rec_cache[key] = rec
+    return rec
 
 
 def summary(area, start, end, today, settings, region=None, cover="all"):
@@ -23,33 +44,36 @@ def summary(area, start, end, today, settings, region=None, cover="all"):
     cell_filter = area.bbox_sql(area)
     cover_pred = cover_exists(settings, cover, "h")
     forest_pred = cover_exists(settings, "forest", "h")
-    total = con.execute(f"""
-        SELECT SUM(value) FROM {root} AS h
-        WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
-          AND ({cell_filter}) AND ({cover_pred})
-    """).fetchone()[0] or 0.0
 
-    peak_month = con.execute(f"""
+    # one pass over the area's rows, grouped by month (+ forest share for Q6c);
+    # everything else is arithmetic on these aggregates
+    rows = con.execute(f"""
         SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
                EXTRACT(month FROM date_local)::INTEGER AS m,
-               SUM(value) AS v
+               SUM(value) AS v,
+               COALESCE(SUM(value) FILTER (WHERE {forest_pred}), 0) AS fv
         FROM {root} AS h
         WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
           AND ({cell_filter}) AND ({cover_pred})
-        GROUP BY 1,2 ORDER BY v DESC LIMIT 1
-    """).fetchone()
+        GROUP BY 1,2
+    """).fetchall()
+
+    by_month = {(y, m): (v, fv) for y, m, v, fv in rows}
+    by_year = {}
+    for (y, m), (v, _) in by_month.items():
+        by_year[y] = by_year.get(y, 0.0) + v
+
+    total = sum(v for v, _ in by_month.values())
+
+    peak_month = None
+    if by_month:
+        (y, m), (v, _) = max(by_month.items(), key=lambda kv: kv[1][0])
+        peak_month = (y, m, v)
 
     # peak year: complete years only (full Jan-Dec inside [start, end])
-    complete = con.execute(f"""
-        SELECT EXTRACT(year FROM date_local)::INTEGER AS y, SUM(value) AS v
-        FROM {root} AS h
-        WHERE date_local >= DATE '{start_s}' AND date_local <= DATE '{end_s}'
-          AND ({cell_filter}) AND ({cover_pred})
-        GROUP BY 1
-    """).fetchall()
-    peak_year = None
     s_dt, e_dt = pd.to_datetime(start), pd.to_datetime(end)
-    for y, v in complete:
+    peak_year = None
+    for y, v in by_year.items():
         ts = pd.Timestamp(year=y, month=1, day=1)
         te = pd.Timestamp(year=y, month=12, day=31)
         if ts >= s_dt and te <= e_dt:
@@ -57,7 +81,9 @@ def summary(area, start, end, today, settings, region=None, cover="all"):
                 peak_year = (y, v)
 
     # full-record bounds for the baseline (complete years of the region's record)
-    rec = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS h WHERE ({cover_pred})").fetchone()
+    dv_file = os.path.join(settings.DATA_PROCESSED, "data_version.json")
+    dv_mtime = os.path.getmtime(dv_file) if os.path.exists(dv_file) else 0.0
+    rec = _rec_bounds(root, cover_pred, dv_mtime)
     rec_start, rec_end = (rec[0], rec[1]) if rec else (None, None)
 
     today_ts = pd.to_datetime(today)
@@ -72,41 +98,35 @@ def summary(area, start, end, today, settings, region=None, cover="all"):
     # current_month is null when today is outside [start, end]
     current_month = None
     if s_dt <= today_ts <= e_dt:
-        cur_row = con.execute(f"""
-            SELECT COALESCE(SUM(value), 0),
-                   COALESCE(SUM(value) FILTER (WHERE {forest_pred}), 0)
-            FROM {root} AS h
-            WHERE date_local >= DATE '{cur_year}-{cur_month:02d}-01'
-              AND date_local <= DATE '{today}'
-              AND ({cell_filter}) AND ({cover_pred})
-        """).fetchone()
-        cur_val, cur_forest = cur_row
+        # data ends at `today`: the (cur_year, cur_month) group is already the
+        # through-today span
+        cur_val, cur_forest = by_month.get((cur_year, cur_month), (0.0, 0.0))
 
-        # same-days span: day 1..cur_day, clamped to each baseline year's month length;
+        # same-days span across baseline years, clamped to each year's month length;
         # a baseline year with no rows counts as 0, not as missing
+        same_span = {}
         if baseline:
-            medians = []
-            forest_shares = []
-            for y in baseline:
-                last = pycalendar.monthrange(y, cur_month)[1]
-                clamped = min(cur_day, last)
-                row = con.execute(f"""
-                    SELECT COALESCE(SUM(value), 0),
-                           COALESCE(SUM(value) FILTER (WHERE {forest_pred}), 0)
-                    FROM {root} AS h
-                    WHERE date_local >= DATE '{y}-{cur_month:02d}-01'
-                      AND date_local <= DATE '{y}-{cur_month:02d}-{clamped:02d}'
-                      AND ({cell_filter}) AND ({cover_pred})
-                """).fetchone()
-                v, fsum = row
-                medians.append(v)
-                forest_shares.append((fsum / v * 100.0) if v else None)
-            med_span = median(medians)
-            fsh = [s for s in forest_shares if s is not None]
-            med_forest_share = median(fsh) if fsh else None
-        else:
-            med_span = None
-            med_forest_share = None
+            span_rows = con.execute(f"""
+                SELECT EXTRACT(year FROM date_local)::INTEGER AS y,
+                       SUM(value) AS v,
+                       COALESCE(SUM(value) FILTER (WHERE {forest_pred}), 0) AS fv
+                FROM {root} AS h
+                WHERE EXTRACT(month FROM date_local) = {cur_month}
+                  AND EXTRACT(day FROM date_local) <= {cur_day}
+                  AND EXTRACT(year FROM date_local) IN ({','.join(str(y) for y in baseline)})
+                  AND ({cell_filter}) AND ({cover_pred})
+                GROUP BY 1
+            """).fetchall()
+            same_span = {int(y): (v, fv) for y, v, fv in span_rows}
+
+        medians = [same_span.get(y, (0.0, 0.0))[0] for y in baseline]
+        forest_shares = []
+        for y in baseline:
+            v, fsum = same_span.get(y, (0.0, 0.0))
+            forest_shares.append((fsum / v * 100.0) if v else None)
+        med_span = median(medians) if medians else None
+        fsh = [s for s in forest_shares if s is not None]
+        med_forest_share = median(fsh) if fsh else None
         # pct_vs_median is null when the baseline median is 0 or missing (spec 7)
         pct = (100 * (cur_val - med_span) / med_span) if med_span else None
         forest_share = (100 * cur_forest / cur_val) if cur_val else None

@@ -34,10 +34,21 @@ Open http://localhost:8080. The `web` service serves the built frontend and the 
 the `updater` service runs `pipeline update --all` once a day against the shared
 `./data` volume.
 
+`docker-compose` builds two images from the same Dockerfile targets:
+
+- `web` (Flask only) — serves the app and API. **No `rasterio`.**
+- `pipeline` (updater, `add-region`, `backfill`) — additionally installs
+  `rasterio==1.5.2` (manylinux wheels bundle GDAL). The MCD12Q1 GeoTIFF granules
+  in `data/raw/landcover/` are read only by the pipeline, to build
+  `data/processed/cell_cover`. Adding a region copies/extends the cover
+  aggregation in the pipeline image, not in `web`.
+
 Without Docker:
 
 ```bash
 pip install -r requirements.txt
+# pipeline-only extra, needed for add-region / cell_cover builds:
+pip install rasterio==1.5.2
 cd frontend && npm ci && npm run build && cd ..
 python -m firecal.pipeline update --region southeast_asia   # or --all
 flask --app app run --port 8000
