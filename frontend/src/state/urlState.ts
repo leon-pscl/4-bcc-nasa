@@ -38,7 +38,8 @@ export function parseHash(hash: string): Partial<AppState> {
   const focus = params.get('focus');
   if (focus) out.focus = focus;
   const tab = params.get('tab');
-  if (tab === 'comparisons' || tab === 'watchlist' || tab === 'methods') out.tab = tab;
+  // watchlist is not shipped (6i); an old hash carrying it lands on Comparisons
+  if (tab === 'comparisons' || tab === 'methods') out.tab = tab;
   const cover = params.get('cover');
   if (cover === 'forest' || cover === 'farmland' || cover === 'other') out.cover = cover;
   else out.cover = 'all';

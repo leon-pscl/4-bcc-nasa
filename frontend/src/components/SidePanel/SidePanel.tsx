@@ -6,7 +6,6 @@ import styles from './SidePanel.module.css';
 
 const TABS = [
   { id: 'comparisons', label: 'Comparisons' },
-  { id: 'watchlist', label: 'Watchlist' },
   { id: 'methods', label: 'Methods' },
 ] as const;
 
