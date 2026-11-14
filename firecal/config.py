@@ -75,7 +75,7 @@ class Settings:
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"
     FIRMS_MAP_KEY: str = field(default="", repr=False)
-    DUCKDB_WEB_MEMORY_LIMIT: str = "512MB"
+    DUCKDB_WEB_MEMORY_LIMIT: str = "1GB"
     DUCKDB_WEB_THREADS: int = 2
     DUCKDB_PIPELINE_MEMORY_LIMIT: str = "2GB"
     DUCKDB_PIPELINE_THREADS: int = 4

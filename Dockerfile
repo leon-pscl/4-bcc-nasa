@@ -24,10 +24,11 @@ COPY sample-data ./sample-data/
 COPY frontend/public/mock ./frontend/public/mock/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist/
 ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
-# DuckDB per-connection limits come from Settings: DUCKDB_WEB_MEMORY_LIMIT (512MB,
-# 2 connections per web worker) x 2 gunicorn workers stays under the 1.5g mem_limit.
+# gunicorn: 2 workers x 4 threads (sync workers alone serialize the dashboard's
+# ~6 parallel API calls). DUCKDB_WEB_MEMORY_LIMIT (1GB) x 2 workers + Python RSS
+# stays under the 4g mem_limit in docker-compose.yml.
 EXPOSE 8000
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "--timeout", "300", "app:app"]
+CMD ["gunicorn", "-w", "2", "--threads", "4", "-b", "0.0.0.0:8000", "--timeout", "300", "app:app"]
 
 # Target: pipeline (updater / add-region). rasterio + GDAL for reading the
 # MCD12Q1 GeoTIFF granules in data/raw/landcover.

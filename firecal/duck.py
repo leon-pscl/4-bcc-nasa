@@ -1,6 +1,6 @@
 """DuckDB connections from Settings. Every connection goes through here.
 
-web:      DUCKDB_WEB_MEMORY_LIMIT (default 512MB), DUCKDB_WEB_THREADS (default 2)
+web:      DUCKDB_WEB_MEMORY_LIMIT (default 1GB), DUCKDB_WEB_THREADS (default 2)
 pipeline: DUCKDB_PIPELINE_MEMORY_LIMIT (default 2GB), DUCKDB_PIPELINE_THREADS (default 4),
           temp_directory=DUCKDB_TEMP_DIR (default /tmp/duckdb, not the bind mount)
 """
@@ -15,7 +15,7 @@ def connect(settings, role="web"):
     import duckdb
 
     if role == "web":
-        limit = getattr(settings, "DUCKDB_WEB_MEMORY_LIMIT", "512MB")
+        limit = getattr(settings, "DUCKDB_WEB_MEMORY_LIMIT", "1GB")
         threads = int(getattr(settings, "DUCKDB_WEB_THREADS", 2))
         temp = None
     else:

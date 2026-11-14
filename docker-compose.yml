@@ -9,7 +9,7 @@ services:
       - ./data:/app/data
     environment:
       - FLASK_DEBUG=0
-    mem_limit: 1.5g
+    mem_limit: 4g
     restart: unless-stopped
 
   updater:
