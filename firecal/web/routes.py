@@ -30,6 +30,35 @@ def _app_version(settings):
         return "unknown"
 
 
+def _probe_harmonized(settings):
+    """Open one harmonized partition (latest year, first file). (ok, detail)."""
+    try:
+        import glob
+        import duckdb
+        root = os.path.join(settings.DATA_PROCESSED, "harmonized_daily")
+        cand = glob.glob(os.path.join(root, "region=*", "year=*", "*.parquet"))
+        if not cand:
+            return False, "no harmonized partitions found"
+        def _y(p):
+            try:
+                return int(os.path.basename(os.path.dirname(p)).split("=")[1])
+            except Exception:
+                return -1
+        cand.sort(key=lambda p: (_y(p), p))
+        pick = cand[-1]
+        rel = os.path.relpath(pick, settings.DATA_PROCESSED)
+        con = duckdb.connect()
+        try:
+            con.execute("PRAGMA threads=1")
+            con.execute("PRAGMA memory_limit='512MB'")
+            con.execute(f"SELECT COUNT(*) FROM read_parquet('{pick.replace(os.sep, '/')}')").fetchone()
+        finally:
+            con.close()
+        return True, None
+    except Exception as e:
+        return False, f"cannot read harmonized partition: {e}"
+
+
 def _json_response(payload, status=200, etag=None):
     body = json.dumps(payload, separators=(",", ":")).encode()
     resp = make_response(body, status)
@@ -185,8 +214,15 @@ def create_app(settings=None, dist_dir=None):
             if age is not None and age > 3:
                 stale = True
             regions.append({"name": r.get("name"), "latest_date": r.get("latest_date"), "age_days": age})
-        status = "stale" if stale else "ok"
-        return _json_response({"status": status, "data_version": dv, "regions": regions}, etag=dv)
+        ok, detail = _probe_harmonized(settings)
+        if ok:
+            status = "stale" if stale else "ok"
+            body = {"status": status, "data_version": dv, "regions": regions}
+        else:
+            status = "error"
+            body = {"status": status, "data_version": dv, "regions": regions,
+                    "error": detail}
+        return _json_response(body, etag=dv)
 
     # ---------- API ----------
     @app.route("/api/coverage")

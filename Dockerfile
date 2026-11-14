@@ -39,5 +39,7 @@ COPY app.py ./
 COPY config/ ./config/
 COPY tests/ ./tests/
 COPY sample-data ./sample-data/
+RUN printf '#!/bin/sh\nexec python -m firecal.pipeline "$@"\n' > /usr/local/bin/pipeline \
+    && chmod +x /usr/local/bin/pipeline
 ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
 CMD ["python", "-m", "firecal.pipeline", "update", "--all"]

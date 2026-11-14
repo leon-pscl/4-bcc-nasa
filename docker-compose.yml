@@ -15,9 +15,11 @@ services:
     build:
       context: .
       target: pipeline
-    command: sh -c "while true; do python -m firecal.pipeline update --all; sleep 86400; done"
+    command: sh -c "while true; do pipeline update --all; sleep 86400; done"
     volumes:
       - ./data:/app/data
     environment:
       - FLASK_DEBUG=0
+      # .env is used by compose for interpolation; only the key is passed through
+      - FIRMS_MAP_KEY=${FIRMS_MAP_KEY}
     restart: unless-stopped

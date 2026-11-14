@@ -146,6 +146,22 @@ def test_health(client):
     assert d["regions"][0]["age_days"] is not None
 
 
+def test_health_error_without_harmonized(tmp_path):
+    """/health must report 'error' when no harmonized partition is readable."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    settings = Settings()
+    settings.DATA_PROCESSED = str(empty)
+    settings.DATA_RAW = str(empty / "raw")
+    settings.REGIONS = {"test_region": (-70.0, -20.0, -60.0, 0.0)}
+    app = create_app(settings)
+    app.testing = True
+    r = app.test_client().get("/health")
+    d = r.get_json()
+    assert d["status"] == "error"
+    assert "error" in d
+
+
 def test_calendar_values_and_shape(client):
     r = client.get("/api/calendar?bbox=-65,-10,-61,-2&start=2017-01-01&end=2026-09-21")
     assert r.status_code == 200

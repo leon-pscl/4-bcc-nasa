@@ -32,7 +32,14 @@ docker compose up --build
 
 Open http://localhost:8080. The `web` service serves the built frontend and the API;
 the `updater` service runs `pipeline update --all` once a day against the shared
-`./data` volume.
+`./data` volume. The pipeline image ships a `pipeline` shim on PATH
+(`pipeline update --all` == `python -m firecal.pipeline update --all`), so one-off
+runs go `docker compose run --rm updater pipeline update --region southeast_asia`.
+
+**Windows bind-mount note:** files the pipeline writes get owner-only ACLs that the
+container can't read. After checking out, grant the share directory read+modify
+inheritance once: `icacls data /grant "Everyone:(OI)(CI)(M)" /T` — this repairs
+existing files and covers every file written later, no per-run step needed.
 
 `docker-compose` builds two images from the same Dockerfile targets:
 
