@@ -270,8 +270,14 @@ def monthly_sql(cd, cal_rel, series_start):
     ),
     snpp_dates AS (SELECT DISTINCT region, date_local FROM cd WHERE platform='SNPP'),
     aqua_dates AS (SELECT DISTINCT region, date_local FROM cd WHERE platform='Aqua'),
+    -- sensor-outage days: a day where exactly one of Aqua/SNPP read at least one
+    -- cell-day, region-wide (Aqua down 2020-08-18..2020-09-02, SNPP downs too);
+    -- no valid ratio exists on those days, so both sides drop them
     outage AS (SELECT region, date_local FROM aqua_dates
-               WHERE (region, date_local) NOT IN (SELECT region, date_local FROM snpp_dates)),
+               WHERE (region, date_local) NOT IN (SELECT region, date_local FROM snpp_dates)
+               UNION
+               SELECT region, date_local FROM snpp_dates
+               WHERE (region, date_local) NOT IN (SELECT region, date_local FROM aqua_dates)),
     aqua_k AS (
       SELECT cd.region, cd.year, cd.month, cd.tile_id, COUNT(*)::DOUBLE AS n,
              COALESCE(k.k, km.k, ka.k) AS kv
@@ -284,7 +290,9 @@ def monthly_sql(cd, cal_rel, series_start):
     ),
     modis_m AS (SELECT region, year, month, SUM(n*kv) AS monthly_modis FROM aqua_k GROUP BY 1,2,3),
     viirs_m AS (SELECT region, year, month, COUNT(*)::DOUBLE AS monthly_viirs
-                FROM cd WHERE platform='SNPP' GROUP BY 1,2,3)
+                FROM cd WHERE platform='SNPP'
+                  AND (region, date_local) NOT IN (SELECT region, date_local FROM outage)
+                GROUP BY 1,2,3)
     SELECT m.region, m.year, m.month, m.monthly_modis, v.monthly_viirs
     FROM modis_m m JOIN viirs_m v USING (region, year, month)
     ORDER BY m.region, m.year, m.month
