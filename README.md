@@ -31,8 +31,12 @@ docker compose up --build
 ```
 
 Open http://localhost:8080. The `web` service serves the built frontend and the API;
-the `updater` service runs `pipeline update --all` once a day against the shared
-`./data` volume. The pipeline image ships a `pipeline` shim on PATH
+it binds to `127.0.0.1:8080` only, so on a public server Caddy (or another reverse
+proxy on the same machine) is the sole way in. The `web` container has a healthcheck
+(`/health`, unhealthy only on `status: "error"`; `stale` still passes) and mounts
+`./data` read-only. The `updater` service runs `pipeline update --all` once a day
+against the shared `./data` volume; if a run fails it retries after 1 hour instead of
+waiting 24. The pipeline image ships a `pipeline` shim on PATH
 (`pipeline update --all` == `python -m firecal.pipeline update --all`), so one-off
 runs go `docker compose run --rm updater pipeline update --region southeast_asia`.
 
