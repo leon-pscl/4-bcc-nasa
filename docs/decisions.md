@@ -35,6 +35,8 @@ or a contract changes. Newest last.
 | D22 | 2026-11-14 | **Ingest de-duplicates on uid (SP preferred); write_partition aborts on staging/selected row mismatch.** `QUALIFY ROW_NUMBER() OVER (PARTITION BY uid ORDER BY CASE WHEN processing = 'SP' THEN 0 ELSE 1 END) = 1` in ingest, and every partition write now counts rows staged vs rows selected (raises, leaves existing partition intact). | The manual FIRMS archives carried duplicate byte-identical rows; stale year partitions had to be hand-republished. A wrong count now aborts loudly instead of silently truncating. |
 | D23 | 2026-11-14 | **typical_year_error_pct = median |bias %| across held-out complete years** (default 2018-2021, 12 held-out months each). `/api/series` reports it (plus `fit_years`, `in_sample`, per-year months, `held_out_months`, and `outage_days` now clipped to the switch date and 2026-11-02). | Gives the UI a single honest number for the calibration uncertainty on pre-2012 years; S-NPP-planned end makes "outage" meaningless after it. |
 
+| D26 | 2026-11-15 | **Amazon removed from regions.json; Southeast Asia only for the submission.** | no Amazon data is loaded, and `update --all` would start a 2003-to-today API backfill for it. |
+
 ## Open
 
 None (O2 closed by D17, O1 by D16,).

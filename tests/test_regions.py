@@ -5,7 +5,7 @@ from firecal.regions import load_regions, regions_dict, starter_areas_dict
 
 def test_regions_load():
     regions, starters = load_regions()
-    assert len(regions) == 2
+    assert len(regions) == 1
     assert "southeast_asia" in regions_dict()
 
 
