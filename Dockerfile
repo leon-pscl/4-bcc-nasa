@@ -30,7 +30,9 @@ CMD ["python", "-m", "flask", "--app", "app", "run", "--host", "0.0.0.0", "--por
 # Target: pipeline (updater / add-region). rasterio + GDAL for reading the
 # MCD12Q1 GeoTIFF granules in data/raw/landcover.
 FROM backend-deps AS pipeline
-# rasterio manylinux wheels bundle GDAL; no system libgdal needed
+# manylinux rasterio wheels bundle GDAL but still link the system expat lib
+RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir rasterio==1.5.2
 COPY firecal/ ./firecal/
 COPY app.py ./

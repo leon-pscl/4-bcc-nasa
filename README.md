@@ -38,9 +38,10 @@ the `updater` service runs `pipeline update --all` once a day against the shared
 
 - `web` (Flask only) — serves the app and API. **No `rasterio`.**
 - `pipeline` (updater, `add-region`, `backfill`) — additionally installs
-  `rasterio==1.5.2` (manylinux wheels bundle GDAL). The MCD12Q1 GeoTIFF granules
-  in `data/raw/landcover/` are read only by the pipeline, to build
-  `data/processed/cell_cover`. Adding a region copies/extends the cover
+  `rasterio==1.5.2` for reading the MCD12Q1 GeoTIFF granules in
+  `data/raw/landcover/` (used to build `data/processed/cell_cover`). The
+  manylinux wheel bundles GDAL; the image adds `libexpat1`, which the wheel
+  links but slim images don't ship. Adding a region copies/extends the cover
   aggregation in the pipeline image, not in `web`.
 
 Without Docker:
