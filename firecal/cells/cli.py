@@ -24,9 +24,9 @@ def main():
     try:
         rebuilt = rebuild(settings, region=args.region,
                           force_years=set(args.years) if args.years else None)
+        versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
     finally:
         release_writer_lock(lock_fd)
-    versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
     print(f"rebuilt {len(rebuilt)} celldays partitions in {time.time() - t0:.1f}s")
     print("data_version:", versions)
 
