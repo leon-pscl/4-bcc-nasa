@@ -175,7 +175,7 @@ IBM Plex Sans 400, 500 and 600). That needs no npm package. Also set
 
 - **Count ramp:** ColorBrewer YlOrRd, exactly as `instructions.md` section 8:
   `#ffffb2 #fed976 #feb24c #fd8d3c #fc4e2a #e31a1c #b10026`.
-  - Bins: 7 quantile bins of the **non-zero** monthly values in the current calendar response.
+  - Bins: 7 log-spaced bins from the 5th percentile to the maximum of the non-zero monthly values in the current calendar response, rounded to 2 significant figures.
   - Zero gets `--fill` with `--ink` text.
   - The legend shows each bin as a range.
 - **Anomaly ramp:** ColorBrewer RdBu, red above the median. Symmetric bins, in percent:
@@ -377,7 +377,7 @@ One card, overflow hidden, with three parts stacked top to bottom.
   1. **Coverage regions** from `/api/coverage`: 1 px dashed `--muted`, with the region name as
      a tooltip.
   2. **Hotspot cells** from `/api/map`: rectangles `grid_deg` wide.
-     - Fill: YlOrRd, using quantile bins of the cell values.
+     - Fill: YlOrRd, using 7 log-spaced bins from the 5th percentile to the maximum of the non-zero cell values, rounded to 2 significant figures.
      - Clicking a cell opens a popup: "12 hotspots · 16.025°S, 61.975°W".
      - When `month` is set, show only that month.
   3. **Draft area:** 2 px dashed `--ink` (white on satellite). It's a rectangle in Box mode and

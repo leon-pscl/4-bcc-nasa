@@ -16,14 +16,27 @@ export function textOn(bg: string): string {
   return cWhite >= cInk ? '#ffffff' : '#0f0f0f';
 }
 
-export function quantileBins(values: number[], bins = 7): number[] {
+function round2Sig(n: number): number {
+  if (n <= 0 || !Number.isFinite(n)) return 0;
+  const p = Math.floor(Math.log10(n)) - 1;
+  const m = 10 ** p;
+  return Math.round(n / m) * m;
+}
+
+export function countBins(values: number[], bins = 7): number[] {
   const nz = values.filter((v) => v > 0).slice().sort((a, b) => a - b);
-  const out: number[] = [];
-  for (let i = 1; i <= bins; i++) {
-    const idx = Math.min(nz.length - 1, Math.floor((i / (bins + 1)) * nz.length));
-    out.push(nz.length ? nz[idx] : 0);
-  }
-  return out;
+  if (!nz.length) return Array(bins).fill(0);
+  const p5 = nz[Math.floor(0.05 * (nz.length - 1))];
+  const max = nz[nz.length - 1];
+  const lo = Math.max(1, p5);
+  const hi = Math.max(lo, max);
+  if (lo === hi) return Array.from({ length: bins }, () => round2Sig(hi));
+  const logLo = Math.log(lo);
+  const logHi = Math.log(hi);
+  return Array.from({ length: bins }, (_, i) => {
+    const t = (i + 1) / bins;
+    return round2Sig(Math.exp(logLo + (logHi - logLo) * t));
+  });
 }
 
 export function countColor(value: number, bins: number[]): string {
@@ -34,7 +47,7 @@ export function countColor(value: number, bins: number[]): string {
 }
 
 export function binLabels(bins: number[]): string[] {
-  // bins are 7 quantile thresholds; color i covers (b[i-1], b[i]], last covers > b[5]
+  // bins are 7 log-spaced thresholds; color i covers (b[i-1], b[i]], last covers > b[5]
   const b = bins.map((x) => Math.max(1, Math.round(x)));
   const labels: string[] = [];
   let lo = 1;

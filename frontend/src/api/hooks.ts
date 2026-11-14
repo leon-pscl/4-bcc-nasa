@@ -4,12 +4,21 @@ import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
   HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema,
 } from './schemas';
+import { buildQueryParams, isQueryValid } from './params';
+import type { AppState } from '../state/urlState';
 
 export function useCoverage() {
   return useQuery({
     queryKey: ['coverage'],
     queryFn: () => apiFetch('coverage', '/api/coverage', CoverageResponseSchema),
   });
+}
+
+export function useQueryParams(state: Pick<AppState, 'area' | 'start' | 'end'> | null | undefined) {
+  const { data: coverage } = useCoverage();
+  const valid = !!state && isQueryValid(state, coverage);
+  const params = valid && state ? buildQueryParams(state) : '';
+  return { params, valid, coverage };
 }
 
 export function useCalendar(params: string) {

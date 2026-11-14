@@ -34,6 +34,7 @@ vi.mock('../../api/hooks', () => ({
   useCalendar: () => ({ data: cal, isLoading: false, error: null }),
   useSummary: () => ({ data: sum }),
   useCoverage: () => ({ data: cov }),
+  useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-12', valid: true, coverage: cov }),
 }));
 
 describe('BurningCalendar', () => {
