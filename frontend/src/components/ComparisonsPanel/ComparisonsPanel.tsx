@@ -38,6 +38,7 @@ export default function ComparisonsPanel() {
   const monthRef = useRef<ChartJS<'line'> | null>(null);
   const yearRef = useRef<ChartJS<'bar'> | null>(null);
   const typical = series?.validation.typical_year_error_pct;
+  const typicalRounded = typical != null ? Math.round(typical) : null;
 
   if (!valid) return <p className={styles.muted}>Choose a valid area and dates, then Analyze to see comparisons.</p>;
   if (!summary || !calendar) return <p className={styles.muted}>Loading comparisons.</p>;
@@ -175,10 +176,10 @@ export default function ComparisonsPanel() {
         <h3 className={styles.heading}>Which years burned most?</h3>
         <div className={styles.chartHead}><span /><button className={styles.pngBtn} onClick={() => downloadPng(yearRef.current, fileBase(state, 'yearly_totals'))}>PNG</button></div>
         <div className={styles.canvas120}><Bar ref={yearRef} data={yearlyData as never} options={yearOpts} aria-label={`Yearly totals ${calendar.years[0]} to ${calendar.years[calendar.years.length - 1]}; highest complete year ${summary.peak_year?.year ?? ''} with ${summary.peak_year ? formatNumber(summary.peak_year.value) : ''} hotspots`} role="img" /></div>
-        {typical != null ? <p className={styles.sentence}>Pre-2012 bars are estimated from MODIS (±{typical}% typical for this area).</p> : null}
+        {typicalRounded != null ? <p className={styles.sentence}>Pre-2012 bars are estimated from MODIS (±{typicalRounded}% typical for this area).</p> : null}
         <div className={styles.topTitle}>Top years (complete years only)</div>
         <ol className={styles.topList}>
-          {topYears.map((t, i) => <li key={t.y} className={styles.topRow}><span>{i + 1}</span><span>{t.y}{t.y < 2012 && typical != null ? ` · MODIS estimate ±${typical}%` : ''}</span><span>{formatNumber(t.v)}</span></li>)}
+          {topYears.map((t, i) => <li key={t.y} className={styles.topRow}><span>{i + 1}</span><span>{t.y}{t.y < 2012 && typicalRounded != null ? ` · MODIS estimate ±${typicalRounded}%` : ''}</span><span>{formatNumber(t.v)}</span></li>)}
         </ol>
       </section>
     </>
