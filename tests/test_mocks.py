@@ -8,7 +8,8 @@ import pytest
 
 MOCK_DIR = os.path.join("frontend", "public", "mock")
 FILES = ["api_calendar.json", "api_summary.json", "api_map.json", "api_hotspots.json",
-         "api_coverage.json", "api_methods.json", "api_error400.json", "api_error422.json"]
+         "api_coverage.json", "api_methods.json", "api_error400.json", "api_error422.json",
+         "api_series.json"]
 
 
 def _load(name):
@@ -61,10 +62,28 @@ def _check_summary(d):
     cur = d["current_month"]
     if cur is not None:
         assert all(_is_num(cur[k]) for k in
-                   ("year", "month", "through_day", "value", "median_same_span", "pct_vs_median"))
+                   ("year", "month", "through_day", "value", "median_same_span", "pct_vs_median",
+                    "forest_share", "median_forest_share"))
     assert isinstance(d["latest_data_date"], str) and len(d["latest_data_date"]) == 10
     assert isinstance(d["synthetic"], bool)
     assert isinstance(d["data_version"], str) and d["data_version"]
+
+
+def _check_series(d):
+    months = d["months"]
+    assert isinstance(months, list) and months and all(isinstance(m, str) and len(m) == 7 for m in months)
+    for key in ("aqua", "snpp", "noaa20", "noaa21", "aqua_k", "harmonized"):
+        assert len(d[key]) == len(months)
+        assert all(_is_num(v) for v in d[key])
+    assert isinstance(d["switch_date"], str)
+    assert isinstance(d["outage_days"], list)
+    val = d["validation"]
+    assert all(isinstance(y, int) for y in val["overlap_years"])
+    assert all(isinstance(y, int) for y in val["fit_years"])
+    assert _is_num(val["pearson_r"]) and _is_num(val["bias_pct"])
+    assert val["typical_year_error_pct"] is None or _is_num(val["typical_year_error_pct"])
+    assert isinstance(val["held_out_months"], int) and isinstance(val["in_sample_months"], int)
+    assert isinstance(val["per_year"], dict) and isinstance(val["in_sample"], dict)
 
 
 def _check_map(d):
@@ -134,6 +153,7 @@ CHECKS = {
     "api_hotspots.json": _check_hotspots,
     "api_coverage.json": _check_coverage,
     "api_methods.json": _check_methods,
+    "api_series.json": _check_series,
 }
 
 

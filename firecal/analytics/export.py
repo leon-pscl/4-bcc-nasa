@@ -42,8 +42,11 @@ def _series_days_relation(con, settings, region):
                 f"{_series_days_sql(celldays, settings.SWITCH_DATE)}")
 
 
-def hotspot_rows(area, start, end, settings, all_sensors=False, region=None):
+def hotspot_rows(area, start, end, settings, all_sensors=False, region=None, cover="all"):
     """Yield DataFrames of detection rows in the area/date range, in batches."""
+    import duckdb
+    from firecal.analytics.cover import cover_exists_latlon
+
     con = duckdb.connect()
     try:
         con.execute("PRAGMA threads=4")
@@ -51,6 +54,7 @@ def hotspot_rows(area, start, end, settings, all_sensors=False, region=None):
         root = read_dataset(settings, "detections", [region] if region else None)
 
         cl = _area_where(area)
+        cover_pred = cover_exists_latlon(settings, cover, "d")
         conf_sql, type_sql = _source_filters(settings)
         if all_sensors:
             series_join = ""
@@ -71,6 +75,7 @@ def hotspot_rows(area, start, end, settings, all_sensors=False, region=None):
               AND {conf_sql}
               AND {type_sql}
               AND {series_filter}
+              AND ({cover_pred})
             ORDER BY d.acq_datetime_utc
         """
         con.execute(select)
@@ -91,10 +96,11 @@ def _area_where(area):
     return f"latitude BETWEEN {area.s} AND {area.n} AND longitude BETWEEN {area.w} AND {area.e}"
 
 
-def stream_hotspots_csv(area, start, end, settings, all_sensors=False, region=None):
+def stream_hotspots_csv(area, start, end, settings, all_sensors=False, region=None, cover="all"):
     """Yield CSV lines (str) for the hotspot rows, streamed from one query."""
     yield "date_local,acq_datetime_utc,latitude,longitude,confidence_class,frp,daynight,sensor,platform,processing\n"
-    for df in hotspot_rows(area, start, end, settings, all_sensors=all_sensors, region=region):
+    for df in hotspot_rows(area, start, end, settings, all_sensors=all_sensors,
+                           region=region, cover=cover):
         for r in df.itertuples(index=False):
             yield (f"{pd.to_datetime(r.date_local).strftime('%Y-%m-%d')},"
                    f"{pd.to_datetime(r.acq_datetime_utc).isoformat()},"
@@ -102,9 +108,10 @@ def stream_hotspots_csv(area, start, end, settings, all_sensors=False, region=No
                    f"{r.sensor},{r.platform},{r.processing}\n")
 
 
-def hotspots_csv(area, start, end, settings, all_sensors=False, region=None):
+def hotspots_csv(area, start, end, settings, all_sensors=False, region=None, cover="all"):
     """Whole CSV as one string (small outputs; prefer stream_hotspots_csv)."""
     buf = io.StringIO()
-    for line in stream_hotspots_csv(area, start, end, settings, all_sensors=all_sensors, region=region):
+    for line in stream_hotspots_csv(area, start, end, settings, all_sensors=all_sensors,
+                                   region=region, cover=cover):
         buf.write(line)
     return buf.getvalue()

@@ -75,6 +75,12 @@ def create_app(settings=None, dist_dir=None):
     def area_args():
         return parse_query(request.args.to_dict(), settings)
 
+    def cover_arg():
+        cover = request.args.get("cover", "all")
+        if cover not in ("all", "forest", "farmland", "other"):
+            raise ParamError("cover must be one of all, forest, farmland, other", "cover")
+        return cover
+
     def coverage_response():
         cov = load_coverage(settings)
         dv = _app_version(settings)
@@ -185,9 +191,10 @@ def create_app(settings=None, dist_dir=None):
             return cached
         area, start, end, today, region, coverage_warning = area_args()
         dv = request.parent_etag
+        cover = cover_arg()
         from firecal.analytics.calendar import calendar_matrix
-        result = calendar_matrix(area, start, end, today, settings, region=region)
-        query = {"start": start, "end": end, "area_km2": area.area_km2()}
+        result = calendar_matrix(area, start, end, today, settings, region=region, cover=cover)
+        query = {"start": start, "end": end, "area_km2": area.area_km2(), "cover": cover}
         if area.radius_km is not None:
             query["point"] = [area.lat, area.lon]
             query["radius_km"] = area.radius_km
@@ -222,7 +229,8 @@ def create_app(settings=None, dist_dir=None):
             return cached
         area, start, end, today, region, coverage_warning = area_args()
         dv = request.parent_etag
-        result = _summary(area, start, end, today, settings, region=region)
+        cover = cover_arg()
+        result = _summary(area, start, end, today, settings, region=region, cover=cover)
         body = {**result, "synthetic": False, "data_version": dv,
                 "coverage_warning": coverage_warning}
         resp = _json_response(body, etag=dv)
@@ -235,9 +243,10 @@ def create_app(settings=None, dist_dir=None):
             return cached
         area, start, end, today, region, coverage_warning = area_args()
         dv = request.parent_etag
+        cover = cover_arg()
         from firecal.analytics.series import seam_series
-        result = seam_series(area, start, end, settings, region=region)
-        query = {"start": start, "end": end, "area_km2": area.area_km2()}
+        result = seam_series(area, start, end, settings, region=region, cover=cover)
+        query = {"start": start, "end": end, "area_km2": area.area_km2(), "cover": cover}
         if area.radius_km is not None:
             query["point"] = [area.lat, area.lon]
             query["radius_km"] = area.radius_km
@@ -261,6 +270,7 @@ def create_app(settings=None, dist_dir=None):
             return cached
         area, start, end, today, region, coverage_warning = area_args()
         dv = request.parent_etag
+        cover = cover_arg()
         import math
         month_raw = request.args.get("month")
         month = None
@@ -271,7 +281,7 @@ def create_app(settings=None, dist_dir=None):
                     raise ValueError
             except ValueError:
                 return _json_response({"error": "month must be an integer 1-12", "field": "month"}, status=400)
-        result = map_cells(area, start, end, settings, month=month, region=region)
+        result = map_cells(area, start, end, settings, month=month, region=region, cover=cover)
         resp = _json_response({**result, "data_version": dv,
                                "coverage_warning": coverage_warning}, etag=dv)
         return store(resp)
@@ -289,7 +299,9 @@ def create_app(settings=None, dist_dir=None):
             return _json_response({"error": "page_size must be an integer 1-500", "field": "page_size"}, status=400)
         area, start, end, today, region, coverage_warning = area_args()
         all_sensors = request.args.get("all_sensors", "0") == "1"
+        cover = cover_arg()
         import duckdb
+        from firecal.analytics.cover import cover_exists_latlon
         from firecal.analytics.export import (_series_days_relation, _area_where,
                                               _source_filters)
         con = duckdb.connect()
@@ -298,6 +310,7 @@ def create_app(settings=None, dist_dir=None):
             root = read_dataset(settings, DETECTIONS, [region] if region else None)
             cl = _area_where(area)
             conf_sql, type_sql = _source_filters(settings)
+            cover_pred = cover_exists_latlon(settings, cover, "d")
             series_join = ""
             if not all_sensors:
                 # only detections that feed the harmonized series
@@ -308,7 +321,7 @@ def create_app(settings=None, dist_dir=None):
                 SELECT COUNT(*) FROM {root} AS d
                 {series_join}
                 WHERE {cl} AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
-                  AND {conf_sql} AND {type_sql}
+                  AND {conf_sql} AND {type_sql} AND ({cover_pred})
             """).fetchone()[0]
             offset = (page - 1) * page_size
             rows_df = con.execute(f"""
@@ -317,7 +330,7 @@ def create_app(settings=None, dist_dir=None):
                 FROM {root} AS d
                 {series_join}
                 WHERE {cl} AND d.date_local >= DATE '{start}' AND d.date_local <= DATE '{end}'
-                  AND {conf_sql} AND {type_sql}
+                  AND {conf_sql} AND {type_sql} AND ({cover_pred})
                 ORDER BY d.acq_datetime_utc
                 LIMIT {page_size} OFFSET {offset}
             """).df()
@@ -340,22 +353,26 @@ def create_app(settings=None, dist_dir=None):
     def hotspots_csv():
         area, start, end, today, region, coverage_warning = area_args()
         all_sensors = request.args.get("all_sensors", "0") == "1"
+        cover = cover_arg()
         from flask import Response, stream_with_context
         if area.radius_km is not None:
             name = f"hotspots_point_{area.lat}_{area.lon}_{area.radius_km}_{start}_{end}.csv"
         else:
             w, s, e, n = area.w, area.s, area.e, area.n
             name = f"hotspots_{w}_{s}_{e}_{n}_{start}_{end}.csv"
+        cover = cover_arg()
         return Response(
             stream_with_context(stream_hotspots_csv(area, start, end, settings,
-                                                  all_sensors=all_sensors, region=region)),
+                                                  all_sensors=all_sensors, region=region,
+                                                  cover=cover)),
             mimetype="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.route("/api/calendar.csv")
     def calendar_csv():
         area, start, end, today, region, coverage_warning = area_args()
-        result = calendar_matrix(area, start, end, today, settings, region=region)
+        cover = cover_arg()
+        result = calendar_matrix(area, start, end, today, settings, region=region, cover=cover)
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["year", "month", "value"])
@@ -370,7 +387,8 @@ def create_app(settings=None, dist_dir=None):
     @app.route("/api/calendar.png")
     def calendar_png():
         area, start, end, today, region, coverage_warning = area_args()
-        result = calendar_matrix(area, start, end, today, settings, region=region)
+        cover = cover_arg()
+        result = calendar_matrix(area, start, end, today, settings, region=region, cover=cover)
         png = render_calendar_png(result["years"], result["values"])
         resp = make_response(png)
         resp.headers["Content-Type"] = "image/png"

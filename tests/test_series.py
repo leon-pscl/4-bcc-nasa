@@ -135,7 +135,15 @@ def test_series_outage_days(env, bbox_area):
 def test_series_validation_numbers(env, bbox_area):
     out = seam_series(bbox_area, "2019-01-01", "2020-12-20", env, region="test_region")
     v = out["validation"]
-    assert v["overlap_years"] == [2019, 2020]
+    # aggregated over held-out months (fixture has no fit years), both years complete
+    assert v["held_out_years"] == [2018, 2021]
+    assert v["fit_years"] == [2013, 2017]
+    assert v["held_out_months"] == 24
+    assert v["in_sample_months"] == 0
+    assert v["typical_year_error_pct"] == pytest.approx(67.05, abs=0.01)
+    assert v["per_year"]["2019"]["months"] == 12
+    assert v["per_year"]["2020"]["months"] == 12
+    assert v["bias_pct"] == pytest.approx((441.0 - 264.0) / 264.0 * 100, abs=0.01)
     # every overlap month: viirs = 11 (>10, counted), modis = 18, except July: 22.5
     # aggregate over 24 months: modis = 441.0, viirs = 264.0
     assert v["bias_pct"] == pytest.approx((441.0 - 264.0) / 264.0 * 100, abs=0.01)

@@ -5,37 +5,40 @@ from firecal.dataset import read_dataset
 MAX_MAP_CELLS = 20_000
 
 
-def map_cells(area, start, end, settings, month=None, region=None):
+def map_cells(area, start, end, settings, month=None, region=None, cover="all"):
     import duckdb
+    from firecal.analytics.cover import cover_exists
+
     con = duckdb.connect()
     con.execute("PRAGMA threads=4")
     con.execute("PRAGMA memory_limit='4GB'")
     root = read_dataset(settings, "harmonized_daily", [region] if region else None)
     cell_filter = area.bbox_sql(area)
+    cover_pred = cover_exists(settings, cover, "h")
     month_filter = f"AND EXTRACT(month FROM date_local) = {int(month)}" if month else ""
     where = f"""
         date_local >= DATE '{start}' AND date_local <= DATE '{end}'
-          AND ({cell_filter}) {month_filter}
+          AND ({cell_filter}) {month_filter} AND ({cover_pred})
     """
     n = con.execute(f"""
         SELECT COUNT(*) FROM (
-            SELECT 1 FROM {root} WHERE {where}
-            GROUP BY cell_lat_idx, cell_lon_idx
+            SELECT 1 FROM {root} AS h WHERE {where}
+            GROUP BY h.cell_lat_idx, h.cell_lon_idx
         )
     """).fetchone()[0]
     if n > MAX_MAP_CELLS:
         grid = 0.25
         aggregated_to = 5
-        bin_lat, bin_lon = "FLOOR(cell_lat_idx / 5)", "FLOOR(cell_lon_idx / 5)"
+        bin_lat, bin_lon = "FLOOR(h.cell_lat_idx / 5)", "FLOOR(h.cell_lon_idx / 5)"
     else:
         grid = 0.05
         aggregated_to = None
-        bin_lat, bin_lon = "cell_lat_idx", "cell_lon_idx"
+        bin_lat, bin_lon = "h.cell_lat_idx", "h.cell_lon_idx"
     rows = con.execute(f"""
         SELECT ROUND({bin_lat} * {grid} + {grid} / 2, 4) AS lat,
                ROUND({bin_lon} * {grid} + {grid} / 2, 4) AS lon,
                SUM(value) AS v
-        FROM {root}
+        FROM {root} AS h
         WHERE {where}
         GROUP BY 1,2
     """).fetchall()
