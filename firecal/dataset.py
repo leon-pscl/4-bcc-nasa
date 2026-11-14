@@ -66,7 +66,10 @@ def release_writer_lock(fd):
             fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError:
         pass
-    os.close(fd)
+    try:
+        os.close(fd)
+    except OSError:
+        pass
 
 
 def dataset_dir(settings, name):

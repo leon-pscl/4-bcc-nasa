@@ -120,6 +120,7 @@ def cmd_backfill(args, settings, client=None):
 
     manifest = _load_manifest_set(settings)
     chunks = build_plan(bbox, start, end, avail, settings, manifest, today=today)
+    fetched = []
 
     # per-source counts
     from collections import defaultdict
@@ -138,7 +139,14 @@ def cmd_backfill(args, settings, client=None):
 
     # key status before long run (best-effort; unknown URL must not block fetches)
     try:
-        client.key_status()
+        raw = client.key_status()
+        try:
+            status = json.loads(raw)
+            print(f"MAP_KEY status: {status.get('current_transactions')}/"
+                  f"{status.get('transaction_limit')} transactions in "
+                  f"{status.get('transaction_interval')}")
+        except (json.JSONDecodeError, TypeError):
+            print("warning: MAP_KEY status response was not JSON")
     except FirmsError as exc:
         print("warning: key_status unavailable:", exc)
 
@@ -169,6 +177,9 @@ def cmd_backfill(args, settings, client=None):
             "path": str(path),
         }
         manifest_append(_manifest_path(settings), entry)
+        fetched.append(str(path))
+
+    return fetched
 
 
 def cmd_update(args, settings):
@@ -178,6 +189,7 @@ def cmd_update(args, settings):
         regions = [args.region]
     else:
         regions = [None]
+    fetched = []
     for r in regions:
         if r is None:
             if not args.bbox:
@@ -193,7 +205,7 @@ def cmd_update(args, settings):
             last = _last_cached_date(settings, bbox)
             ns.start = last if last else settings.SERIES_START
             ns.end = None
-            cmd_backfill(ns, settings)
+            fetched.extend(cmd_backfill(ns, settings) or [])
         else:
             bbox = _region_bbox(settings, r)
             ns = argparse.Namespace(
@@ -203,7 +215,8 @@ def cmd_update(args, settings):
             last = _last_cached_date(settings, bbox)
             ns.start = last if last else settings.SERIES_START
             ns.end = None
-            cmd_backfill(ns, settings)
+            fetched.extend(cmd_backfill(ns, settings) or [])
+    return fetched
 
 
 def main():

@@ -2,4 +2,18 @@ services:
   web:
     build: .
     ports:
-      - "8080:80"
+      - "8080:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_DEBUG=0
+    restart: unless-stopped
+
+  updater:
+    build: .
+    command: sh -c "while true; do python -m firecal.pipeline update --all; sleep 86400; done"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_DEBUG=0
+    restart: unless-stopped

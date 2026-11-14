@@ -103,4 +103,5 @@ def rebuild(settings, region=None, force_years=None, state=None):
         rebuilt.append(key)
     save_state(settings, state)
     con.close()
+    print("REBUILT:", rebuilt, file=__import__('sys').stderr)
     return rebuilt
