@@ -11,12 +11,12 @@ const cov: CoverageResponse = {
 
 describe('params', () => {
   it('invalid state means no params/fetch', () => {
-    const bad: AppState = { area: { kind: 'bbox', bbox: [0, 0, 0, 0] }, start: '', end: '', view: 'count', tab: 'comparisons' };
+    const bad: AppState = { area: { kind: 'bbox', bbox: [0, 0, 0, 0] }, start: '', end: '', view: 'count', tab: 'comparisons', cover: 'all' };
     expect(isQueryValid(bad, cov)).toBe(false);
     expect(isQueryValid({ ...bad, area: { kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }, start: '2025-01-01', end: '2024-01-01' }, cov)).toBe(false);
   });
   it('valid state builds params', () => {
-    const ok: AppState = { area: { kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }, start: '2003-01-01', end: '2026-11-14', view: 'count', tab: 'comparisons' };
+    const ok: AppState = { area: { kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }, start: '2003-01-01', end: '2026-11-14', view: 'count', tab: 'comparisons', cover: 'all' };
     expect(isQueryValid(ok, cov)).toBe(true);
     expect(buildQueryParams(ok)).toContain('bbox=');
   });

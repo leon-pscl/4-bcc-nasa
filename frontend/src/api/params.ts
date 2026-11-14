@@ -9,10 +9,11 @@ export function buildAreaParams(area: AreaState): URLSearchParams {
   return p;
 }
 
-export function buildQueryParams(state: Pick<AppState, 'area' | 'start' | 'end'>): string {
+export function buildQueryParams(state: Pick<AppState, 'area' | 'start' | 'end' | 'cover'>): string {
   const p = buildAreaParams(state.area);
   p.set('start', state.start);
   p.set('end', state.end);
+  if (state.cover) p.set('cover', state.cover);
   return p.toString();
 }
 

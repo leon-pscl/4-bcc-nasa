@@ -32,6 +32,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       end: region.latest_date,
       view: 'count' as const,
       tab: 'comparisons' as const,
+      cover: 'all' as const,
     };
 
     if (initialHashEmpty) {
@@ -47,6 +48,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       view: parsed.view ?? defaults.view,
       focus: parsed.focus,
       tab: parsed.tab ?? defaults.tab,
+      cover: parsed.cover ?? defaults.cover,
     }});
   }, [coverage, state, initialHashEmpty]);
 

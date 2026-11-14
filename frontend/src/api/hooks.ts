@@ -14,7 +14,7 @@ export function useCoverage() {
   });
 }
 
-export function useQueryParams(state: Pick<AppState, 'area' | 'start' | 'end'> | null | undefined) {
+export function useQueryParams(state: Pick<AppState, 'area' | 'start' | 'end' | 'cover'> | null | undefined) {
   const { data: coverage } = useCoverage();
   const valid = !!state && isQueryValid(state, coverage);
   const params = valid && state ? buildQueryParams(state) : '';

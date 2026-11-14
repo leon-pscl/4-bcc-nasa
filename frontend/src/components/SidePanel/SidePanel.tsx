@@ -1,6 +1,7 @@
 import { useRef, type KeyboardEvent } from 'react';
 import { useAppState } from '../../state/useAppState';
 import ComparisonsPanel from '../ComparisonsPanel/ComparisonsPanel';
+import MethodsPanel from '../MethodsPanel/MethodsPanel';
 import styles from './SidePanel.module.css';
 
 const TABS = [
@@ -49,7 +50,7 @@ export default function SidePanel() {
       >
         {state.tab === 'comparisons' && <ComparisonsPanel />}
         {state.tab === 'watchlist' && <p className={styles.placeholder}>Watchlist coming in 6i.</p>}
-        {state.tab === 'methods' && <p className={styles.placeholder}>Methods: validation numbers (text) — coming per spec 5.7.</p>}
+        {state.tab === 'methods' && <MethodsPanel />}
       </div>
     </section>
   );

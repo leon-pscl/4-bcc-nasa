@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import MapCard from './MapCard';
 
 const dispatch = vi.fn();
-const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const };
+const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const, cover: 'all' as const };
 
 const coverage = { regions: [
   { name: 'southeast_asia', bbox: [92.0, -11.0, 141.0, 28.5], synthetic: true, start: '2003-01-01', end: '2026-11-12', latest_date: '2026-11-12', countries: [], platforms: [], label: 'Southeast Asia' },

@@ -8,6 +8,7 @@ describe('urlState', () => {
     end: '2026-11-12',
     view: 'count',
     tab: 'comparisons',
+    cover: 'all',
   };
   it('round trip', () => {
     const h = toHash(state);

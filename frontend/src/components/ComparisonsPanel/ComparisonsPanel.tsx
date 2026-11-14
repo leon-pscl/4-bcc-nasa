@@ -139,6 +139,9 @@ export default function ComparisonsPanel() {
                     <div className={styles.barRow}><span>This year</span><div className={styles.track}><div className={styles.fill} style={{ width: `${(cm.value/barMax)*100}%`, background: '#e31a1c' }} /></div><span>{formatNumber(cm.value)}</span></div>
                     <div className={styles.barRow}><span>Median</span><div className={styles.track}><div className={styles.fill} style={{ width: `${(cm.median_same_span/barMax)*100}%`, background: 'var(--ink)' }} /></div><span>{formatNumber(cm.median_same_span)}</span></div>
                   </div>
+                  {state.cover !== 'forest' && cm.forest_share != null && cm.median_forest_share != null ? (
+                    <p className={styles.muted}>{Math.round(cm.forest_share)}% of these hotspots were in forest (usually {Math.round(cm.median_forest_share)}%).</p>
+                  ) : null}
                   <div className={styles.foot}>Median of the same days ({MONTHS[cm.month - 1]} 1-{cm.through_day}) in {calendar.baseline_years[0]}-{calendar.baseline_years[calendar.baseline_years.length - 1]}. Whole months would make a month in progress look low.</div>
                 </>
               ) : (
