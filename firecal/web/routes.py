@@ -377,7 +377,11 @@ def create_app(settings=None, dist_dir=None):
             "WHERE region = ? AND platform = 'Aqua' GROUP BY 1",
             [cal_path, region]).fetchall())
         con.close()
-        val_path = os.path.join(settings.DATA_PROCESSED, "validation.json")
+        # read the requested region's validation file (C5), falling back to the
+        # legacy single validation.json for older data sets
+        val_path = os.path.join(settings.DATA_PROCESSED, "validation", region + ".json")
+        if not os.path.exists(val_path):
+            val_path = os.path.join(settings.DATA_PROCESSED, "validation.json")
         validation = json.load(open(val_path)) if os.path.exists(val_path) else None
         import statistics
         ks = [r[1] for r in krows]
