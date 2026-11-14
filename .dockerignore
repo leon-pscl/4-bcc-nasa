@@ -13,6 +13,14 @@ frontend/dist
 frontend/*.tsbuildinfo
 frontend/.vite
 
+# data & caches (never COPYed; keeps the build context small)
+data/
+.tmp/
+**/__pycache__
+*.pyc
+.venv/
+venv/
+
 # docs not needed for build
 docs
 
