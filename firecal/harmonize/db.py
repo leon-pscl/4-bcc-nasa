@@ -446,7 +446,6 @@ def rebuild(settings, region=None, state=None):
     con = duckdb.connect()
     con.execute("PRAGMA threads=2")
     con.execute("PRAGMA memory_limit='1500MB'")
-    con.execute("PRAGMA preserve_insertion_order=false")
     con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
 
     cd = read_dataset(settings, "celldays", [region] if region else None)

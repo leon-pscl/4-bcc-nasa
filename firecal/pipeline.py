@@ -127,7 +127,6 @@ def run_update(region, all_regions, settings, recalibrate, summary):
             con = duckdb.connect()
             con.execute("PRAGMA threads=1")
             con.execute("PRAGMA memory_limit='1GB'")
-            con.execute("PRAGMA preserve_insertion_order=false")
             con.execute("PRAGMA temp_directory='data/processed/_duckdb_tmp'")
             import sys as _sys
             argv = _sys.argv[:]

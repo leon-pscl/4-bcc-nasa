@@ -155,6 +155,13 @@ def write_partition(con, sql, settings, name, region, year, post_check=None):
         shutil.rmtree(tmp, ignore_errors=True)
         raise
     target = root / f"region={region}" / f"year={year}"
+    # the staging copy must contain exactly this partition and nothing else; a
+    # stray file from another partition would otherwise be moved into the target
+    strays = [f for f in tmp.rglob("*.parquet")
+              if f.parent.name != f"year={year}" or f.parent.parent.name != f"region={region}"]
+    if strays:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise ValueError(f"write_partition: staged file(s) for the wrong partition: {strays}")
     if target.exists():
         for old in target.glob("*.parquet"):
             try:
@@ -178,8 +185,11 @@ def read_dataset(settings, name, regions=None):
     if not root.exists():
         return "(SELECT NULL WHERE FALSE)"
     if regions:
-        parts = [f"'{root.as_posix()}/region={r}/**/*.parquet'" for r in regions]
-        return "read_parquet([" + ", ".join(parts) + "])"
+        parts = [f"read_parquet('{root.as_posix()}/region={r}/**/*.parquet')" for r in regions]
+        if len(parts) == 1:
+            return parts[0]
+        # DuckDB 2.0.0 mishandles a list containing **-globs: use a plain UNION ALL
+        return "(" + " UNION ALL ".join(f"SELECT * FROM {p}" for p in parts) + ")"
     return f"read_parquet('{root.as_posix()}/region=*/**/*.parquet')"
 
 

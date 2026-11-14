@@ -148,6 +148,11 @@ From the first day of the fresh start:
   Synthetic data lives in its own folder and always carries `synthetic: true`.
 - **An external URL was guessed** (FIRMS key status). Confirm URLs against a real response
   before relying on them.
+- **`PRAGMA preserve_insertion_order=false` silently drops rows** in DuckDB 2.0.0 when a
+  `COPY ... PARTITION_BY` reads an `UNION ALL` with a `LIMIT` subquery — about a third of
+  runs dropped exactly one row (verified on the staging path). The staging check (check
+  (b) before any swap) caught it; the pragma was removed everywhere. If a count ever comes
+  out one short, suspect the connection pragmas before the SQL.
 
 ### 2.3 How the team gets data by hand (Stage 1a automates this)
 
