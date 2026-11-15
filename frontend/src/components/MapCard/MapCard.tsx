@@ -4,9 +4,9 @@ import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { useAppState } from '../../state/useAppState';
 import { useQueryParams, useMap as useMapData, useCalendar } from '../../api/hooks';
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
-import { formatNumber, formatDate, formatLat, formatLon } from '../../lib/format';
+import { formatNumber, formatDate, formatLat, formatLon, formatDeg } from '../../lib/format';
 import { COUNT_RAMP, countBins, countColor } from '../../lib/colors';
-import type { AppState } from '../../state/urlState';
+import type { AppState, AreaState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
 type BoxDraft = { n: string; s: string; e: string; w: string };
@@ -15,49 +15,109 @@ const emptyBox: BoxDraft = { n: '', s: '', e: '', w: '' };
 const emptyPoint: PointDraft = { lat: '', lon: '', radius: '' };
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-function DrawController({ drawing, onStart, onMove, onEnd, onCancel }: {
-  drawing: boolean; onStart: (p: LatLng) => void; onMove: (p: LatLng) => void; onEnd: (p: LatLng) => void; onCancel: () => void;
+function boundsFromArea(area: AreaState): [[number, number], [number, number]] | null {
+  if (area.kind === 'bbox') { const [w, s, e, n] = area.bbox; return [[s, w], [n, e]]; }
+  const [lat, lon] = area.point;
+  const d = area.radius_km / 111;
+  return [[lat - d, lon - d], [lat + d, lon + d]];
+}
+
+function DrawController({ drawing, onStart, onMove, onEnd, onAbort, onCancel }: {
+  drawing: boolean; onStart: (p: LatLng) => void; onMove: (p: LatLng) => void; onEnd: (p?: LatLng) => void; onAbort: () => void; onCancel: () => void;
 }) {
   const map = useMap();
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
-    if (drawing) { map.dragging.disable(); map.getContainer().style.cursor = 'crosshair'; }
-    else { map.dragging.enable(); map.getContainer().style.cursor = ''; }
-    return () => { map.dragging.enable(); map.getContainer().style.cursor = ''; };
+    const c = map.getContainer();
+    if (drawing) { map.dragging.disable(); map.doubleClickZoom.disable(); map.boxZoom.disable(); c.style.cursor = 'crosshair'; }
+    else { map.dragging.enable(); map.doubleClickZoom.enable(); map.boxZoom.enable(); c.style.cursor = ''; }
+    return () => { map.dragging.enable(); map.doubleClickZoom.enable(); map.boxZoom.enable(); c.style.cursor = ''; };
   }, [drawing, map]);
   useMapEvents({
-    mousedown(e) { if (drawing) onStart(e.latlng); },
-    mousemove(e) { if (drawing) onMove(e.latlng); },
-    mouseup(e) { if (drawing) onEnd(e.latlng); },
+    mousedown(e) { if (drawing) { pressRef.current = e.containerPoint; onStart(e.latlng); } },
+    mousemove(e) { if (drawing && pressRef.current) onMove(e.latlng); },
+    mouseup(e) {
+      if (!drawing) return;
+      const p = pressRef.current; pressRef.current = null;
+      if (!p) return;
+      if (Math.hypot(e.containerPoint.x - p.x, e.containerPoint.y - p.y) < 5) { onAbort(); return; }
+      onEnd(e.latlng);
+    },
   });
   useEffect(() => {
     if (!drawing) return;
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') onCancel(); };
+    const onDocUp = () => { if (pressRef.current) { pressRef.current = null; onEnd(); } };
+    document.addEventListener('mouseup', onDocUp);
+    return () => document.removeEventListener('mouseup', onDocUp);
+  }, [drawing, onEnd]);
+  useEffect(() => {
+    if (!drawing) return;
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { pressRef.current = null; onCancel(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [drawing, onCancel]);
   return null;
 }
 
-function FitToBounds({ bounds }: { bounds: [[number, number], [number, number]] | null }) {
-  const map = useMap();
-  useEffect(() => { if (bounds) map.fitBounds(bounds, { padding: [20, 20] }); }, [bounds, map]);
-  return null;
-}
+type EdgeLabelPos = { left: number; top: number };
+const LABEL_W = 120;
+const LABEL_H = 26;
 
-function DraftChip({ map, bounds, label }: { map: LeafletMap | null; bounds: [[number, number], [number, number]] | null; label: string | null }) {
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+function clamp(v: number, min: number, max: number) { return Math.min(Math.max(v, min), Math.max(min, max)); }
+
+function EdgeLabels({ map, bounds }: { map: LeafletMap | null; bounds: [[number, number], [number, number]] | null }) {
+  const [pos, setPos] = useState<{ n: EdgeLabelPos; s: EdgeLabelPos; e: EdgeLabelPos; w: EdgeLabelPos } | null>(null);
   useEffect(() => {
-    if (!map || !bounds || !label) { setPos(null); return; }
+    if (!map || !bounds) { setPos(null); return; }
     const update = () => {
-      const p = map.latLngToContainerPoint([bounds[1][0], bounds[0][1]]);
-      setPos({ left: Math.max(8, p.x), top: Math.max(8, p.y - 34) });
+      const [[s, w], [n, e]] = bounds;
+      const size = map.getSize();
+      const cx = (w + e) / 2, cy = (n + s) / 2;
+      const pN = map.latLngToContainerPoint([n, cx]);
+      const pS = map.latLngToContainerPoint([s, cx]);
+      const pW = map.latLngToContainerPoint([cy, w]);
+      const pE = map.latLngToContainerPoint([cy, e]);
+      setPos({
+        n: { left: clamp(pN.x - LABEL_W / 2, 8, size.x - 8 - LABEL_W), top: clamp(pN.y - 6 - LABEL_H, 8, size.y - 8 - LABEL_H) },
+        s: { left: clamp(pS.x - LABEL_W / 2, 8, size.x - 8 - LABEL_W), top: clamp(pS.y + 6, 8, size.y - 8 - LABEL_H) },
+        w: { left: clamp(pW.x - 6 - LABEL_W, 8, size.x - 8 - LABEL_W), top: clamp(pW.y - LABEL_H / 2, 8, size.y - 8 - LABEL_H) },
+        e: { left: clamp(pE.x + 6, 8, size.x - 8 - LABEL_W), top: clamp(pE.y - LABEL_H / 2, 8, size.y - 8 - LABEL_H) },
+      });
     };
     update();
     map.on('move zoom resize', update);
     return () => { map.off('move zoom resize', update); };
-  }, [bounds, label, map]);
+  }, [bounds, map]);
+  if (!pos || !bounds) return null;
+  const [[s, w], [n, e]] = bounds;
+  return (
+    <>
+      <div aria-hidden="true" className={styles.edgeLabel} style={pos.n}>North {formatDeg(n, 'lat')}</div>
+      <div aria-hidden="true" className={styles.edgeLabel} style={pos.s}>South {formatDeg(s, 'lat')}</div>
+      <div aria-hidden="true" className={styles.edgeLabel} style={pos.w}>West {formatDeg(w, 'lon')}</div>
+      <div aria-hidden="true" className={styles.edgeLabel} style={pos.e}>East {formatDeg(e, 'lon')}</div>
+    </>
+  );
+}
+
+function DraftChip({ map, bounds, label, aboveLabel }: { map: LeafletMap | null; bounds: [[number, number], [number, number]] | null; label: string | null; aboveLabel?: boolean }) {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const chipRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!map || !bounds || !label) { setPos(null); return; }
+    const update = () => {
+      const [[, w], [n, e]] = bounds;
+      const size = map.getSize();
+      const half = (chipRef.current?.offsetWidth ?? 200) / 2;
+      const p = map.latLngToContainerPoint([n, (w + e) / 2]);
+      setPos({ left: clamp(p.x, 8 + half, size.x - 8 - half), top: aboveLabel ? p.y - 38 : p.y - 6 });
+    };
+    update();
+    map.on('move zoom resize', update);
+    return () => { map.off('move zoom resize', update); };
+  }, [bounds, label, map, aboveLabel]);
   if (!pos || !label) return null;
-  return <div className={styles.chip} style={{ left: pos.left, top: pos.top }}>{label}</div>;
+  return <div ref={chipRef} className={styles.chip} style={{ left: pos.left, top: pos.top, transform: 'translate(-50%, -100%)' }}>{label}</div>;
 }
 
 export default function MapCard() {
@@ -74,7 +134,9 @@ export default function MapCard() {
   const [basemap, setBasemap] = useState<'street' | 'satellite'>('street');
   const [map, setMap] = useState<LeafletMap | null>(null);
   const startRef = useRef<LatLng | null>(null);
-  const [live, setLive] = useState<{ a: LatLng; b: LatLng } | null>(null);
+  const liveRef = useRef<{ a: LatLng; b: LatLng } | null>(null);
+  const [live, setLiveState] = useState<{ a: LatLng; b: LatLng } | null>(null);
+  const setLive = (v: { a: LatLng; b: LatLng } | null) => { liveRef.current = v; setLiveState(v); };
 
   useEffect(() => {
     if (!state) return;
@@ -139,24 +201,51 @@ export default function MapCard() {
 
   function startDraw(p: LatLng) { startRef.current = p; setLive({ a: p, b: p }); }
   function moveDraw(p: LatLng) { if (startRef.current) setLive({ a: startRef.current, b: p }); }
-  function endDraw(p: LatLng) {
-    if (!startRef.current) return;
-    const a = startRef.current;
-    setBoxDraft(cornersToEdges(a.lat, a.lng, p.lat, p.lng));
+  function endDraw(p?: LatLng) {
+    const start = startRef.current;
+    const target = p ?? liveRef.current?.b;
+    if (!start || !target) return;
+    setBoxDraft(cornersToEdges(start.lat, start.lng, target.lat, target.lng));
     setDrawing(false); setLive(null); startRef.current = null;
   }
+  function abortDraw() { setLive(null); startRef.current = null; }
 
-  let rectBounds: [[number, number], [number, number]] | null = null;
-  if (mode === 'box') {
-    if (live) rectBounds = [[Math.min(live.a.lat, live.b.lat), Math.min(live.a.lng, live.b.lng)], [Math.max(live.a.lat, live.b.lat), Math.max(live.a.lng, live.b.lng)]];
-    else if (edges) rectBounds = [[edges.s, edges.w], [edges.n, edges.e]];
-  }
-  const circleBounds = mode === 'point' && pointValid ? [[pLat - pRad / 111, pLon - pRad / 111], [pLat + pRad / 111, pLon + pRad / 111]] as [[number, number], [number, number]] : null;
-  let fitBounds = mode === 'box' ? rectBounds : circleBounds;
-  if (!fitBounds && coverage?.regions?.length) {
+  const en = edges?.n ?? null, es = edges?.s ?? null, ee = edges?.e ?? null, ew = edges?.w ?? null;
+  const rectBounds = useMemo((): [[number, number], [number, number]] | null => {
+    if (mode !== 'box') return null;
+    if (live) return [[Math.min(live.a.lat, live.b.lat), Math.min(live.a.lng, live.b.lng)], [Math.max(live.a.lat, live.b.lat), Math.max(live.a.lng, live.b.lng)]];
+    if (en !== null && es !== null && ee !== null && ew !== null) return [[es, ew], [en, ee]];
+    return null;
+  }, [mode, live, en, es, ee, ew]);
+  const circleBounds = useMemo((): [[number, number], [number, number]] | null =>
+    mode === 'point' && pointValid ? [[pLat - pRad / 111, pLon - pRad / 111], [pLat + pRad / 111, pLon + pRad / 111]] : null,
+  [mode, pLat, pLon, pRad, pointValid]);
+  const coverageBounds = useMemo((): [[number, number], [number, number]] | null => {
+    if (!coverage?.regions?.length) return null;
     const rs = coverage.regions.map((r) => r.bbox);
-    fitBounds = [[Math.min(...rs.map((r) => r[1])), Math.min(...rs.map((r) => r[0]))], [Math.max(...rs.map((r) => r[3])), Math.max(...rs.map((r) => r[2]))]];
-  }
+    return [[Math.min(...rs.map((r) => r[1])), Math.min(...rs.map((r) => r[0]))], [Math.max(...rs.map((r) => r[3])), Math.max(...rs.map((r) => r[2]))]];
+  }, [coverage]);
+
+  const didInitialFit = useRef(false);
+  useEffect(() => {
+    if (didInitialFit.current || !map || !state) return;
+    const target = boundsFromArea(state.area) ?? coverageBounds;
+    if (!target) return;
+    map.fitBounds(target, { padding: [20, 20] });
+    didInitialFit.current = true;
+  }, [map, state, coverageBounds]);
+
+  const areaKey = state ? JSON.stringify(state.area) : '';
+  const lastAnalyzeKey = useRef<string | null>(null);
+  const prevAreaKey = useRef(areaKey);
+  useEffect(() => {
+    if (prevAreaKey.current === areaKey) return;
+    prevAreaKey.current = areaKey;
+    if (lastAnalyzeKey.current === areaKey) { lastAnalyzeKey.current = null; return; }
+    if (!map || !state) return;
+    const target = boundsFromArea(state.area);
+    if (target) map.fitBounds(target, { padding: [20, 20] });
+  }, [areaKey, map, state]);
 
   const areaLabel = (() => {
     if (mode === 'point') return area ? `Selected area · ${formatNumber(area)} km²` : null;
@@ -172,6 +261,7 @@ export default function MapCard() {
     if (!sa) return;
     const [w, s, e, n] = sa.bbox;
     setMode('box'); setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
+    if (map) map.fitBounds([[s, w], [n, e]], { padding: [20, 20] });
   }
 
   function analyze() {
@@ -180,7 +270,9 @@ export default function MapCard() {
     if (mode === 'box' && edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
     else if (mode === 'point' && pointValid) patch.area = { kind: 'point', point: [pLat, pLon], radius_km: pRad };
     dispatch({ type: 'patch', patch });
-    if (map && fitBounds) map.fitBounds(fitBounds, { padding: [20, 20] });
+    if (patch.area) lastAnalyzeKey.current = JSON.stringify(patch.area);
+    const target = mode === 'box' ? rectBounds : circleBounds;
+    if (map && target) map.fitBounds(target, { padding: [20, 20] });
   }
 
   const mapBins = useMemo(() => {
@@ -237,10 +329,10 @@ export default function MapCard() {
           })}
           {mode === 'box' && rectBounds && <Rectangle bounds={rectBounds} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
           {mode === 'point' && pointValid && <Circle center={[pLat, pLon]} radius={pRad * 1000} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
-          <FitToBounds bounds={fitBounds} />
-          <DrawController drawing={drawing && mode === 'box'} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
+          <DrawController drawing={drawing && mode === 'box'} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onAbort={abortDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
         </MapContainer>
-        <DraftChip map={map} bounds={draftShapeBounds} label={areaLabel} />
+        {mode === 'box' && <EdgeLabels map={map} bounds={rectBounds} />}
+        <DraftChip map={map} bounds={draftShapeBounds} label={areaLabel} aboveLabel={mode === 'box' && !!rectBounds} />
         <div className={styles.controls}>
           <div className={styles.controlGroup}>
             <button type="button" className={styles.controlBtn} aria-label="Zoom in" onClick={() => map?.zoomIn()}>+</button>
@@ -285,17 +377,22 @@ export default function MapCard() {
             </div>
           </div>
           {mode === 'box' ? (
-            <>
-              {(['n', 's', 'e', 'w'] as const).map((k) => {
-                const label = k === 'n' ? 'North edge' : k === 's' ? 'South edge' : k === 'e' ? 'East edge' : 'West edge';
-                return (
-                  <label key={k} className={styles.label}>{label}
-                    <input className={styles.input} inputMode="decimal" value={b[k]} aria-describedby={areaErr || (!inRegion && edges) ? 'area-err' : undefined} aria-invalid={!!areaErr}
-                      onChange={(ev) => setBoxDraft((prev) => ({ ...(prev ?? emptyBox), [k]: ev.target.value }))} />
-                  </label>
-                );
-              })}
-            </>
+            <div className={styles.compass}>
+              {([
+                ['n', 'North edge', styles.compassN],
+                ['w', 'West edge', styles.compassW],
+                ['e', 'East edge', styles.compassE],
+                ['s', 'South edge', styles.compassS],
+              ] as const).map(([k, label, area]) => (
+                <label key={k} className={`${styles.label} ${area}`}>{label}
+                  <input className={styles.input} inputMode="decimal" value={b[k]} aria-describedby={areaErr || (!inRegion && edges) ? 'area-err' : undefined} aria-invalid={!!areaErr}
+                    onChange={(ev) => setBoxDraft((prev) => ({ ...(prev ?? emptyBox), [k]: ev.target.value }))} />
+                </label>
+              ))}
+              <div className={styles.compassC} aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"><rect x="4" y="4" width="16" height="16" rx="1" /></svg>
+              </div>
+            </div>
           ) : (
             <>
               <label className={styles.label}>Latitude<input className={styles.input} inputMode="decimal" value={pointDraft.lat} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lat: e.target.value }))} /></label>

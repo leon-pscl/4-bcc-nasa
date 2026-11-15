@@ -11,6 +11,13 @@
 .basemapBtn[aria-pressed='true'] { background: var(--ink); color: #fff; }
 .jump { position: absolute; top: 10px; left: 64px; z-index: 1000; }
 .chip { position: absolute; z-index: 1000; background: var(--surface); border: 1px solid var(--line); padding: 4px 8px; font-size: 12px; font-weight: 600; border-radius: var(--r-control); pointer-events: none; }
+.edgeLabel { position: absolute; z-index: 900; background: var(--surface); border: 1px solid var(--line); padding: 4px 8px; font-size: 12px; font-weight: 600; border-radius: var(--r-control); pointer-events: none; white-space: nowrap; }
+.compass { display: grid; grid-template-areas: ". n ." "w c e" ". s ."; gap: var(--s2); align-items: center; }
+.compassN { grid-area: n; justify-self: center; }
+.compassS { grid-area: s; justify-self: center; }
+.compassW { grid-area: w; }
+.compassE { grid-area: e; }
+.compassC { grid-area: c; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .modeGroup { display: flex; border: 1px solid var(--ink); border-radius: var(--r-control); overflow: hidden; height: 44px; }
 .modeBtn { background: var(--surface); color: var(--ink); border: none; border-right: 1px solid var(--ink); padding: 0 10px; cursor: pointer; font-family: var(--font-sans); font-size: 13px; }
 .modeBtn:last-child { border-right: none; }
