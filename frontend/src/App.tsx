@@ -18,8 +18,8 @@ export default function App() {
       <SyntheticBanner />
       <div id="live-region" aria-live="polite" className="visually-hidden" />
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 24, alignItems: 'flex-start' }}>
-        <div style={{ flex: '999 1 640px' }}><MapCard /></div>
-        <div style={{ flex: '1 1 360px', maxWidth: 420 }}><SidePanel /></div>
+        <div style={{ flex: '1 1 0', minWidth: 0 }}><MapCard /></div>
+        <div style={{ flex: '0 0 360px', maxWidth: 420 }}><SidePanel /></div>
       </div>
       <CoverControl />
       <BurningCalendar />
