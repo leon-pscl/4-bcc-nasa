@@ -27,11 +27,9 @@ export default function HotspotTable() {
   const range = useMemo(() => focus ? clipRange(focus, state.start, state.end) : { start: state.start, end: state.end }, [focus, state.start, state.end]);
   const params = useMemo(() => {
     if (!valid) return '';
-    const p = buildAreaParams(state.area);
-    p.set('start', range.start);
-    p.set('end', range.end);
-    if (state.cover) p.set('cover', state.cover);
-    return p.toString();
+    const parts = [buildAreaParams(state.area), `start=${range.start}`, `end=${range.end}`];
+    if (state.cover) parts.push(`cover=${state.cover}`);
+    return parts.join('&');
   }, [valid, state.area, state.cover, range]);
 
   // reset page when query/focus changes

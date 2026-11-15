@@ -71,6 +71,15 @@ export default function MethodsPanel() {
         <p className={styles.body}><strong>Validation years:</strong> {vval.years.join(', ')} — r {fmt(vval.metrics.pearson_r,3)}, bias {fmtPct(vval.metrics.bias_pct)}, median abs % error {fmtPct(vval.metrics.median_abs_pct_error)}.</p>
       </section>
 
+      {data.outlook && (
+        <section className={styles.section}>
+          <h3 className={styles.heading}>How the outlook works</h3>
+          <p className={styles.body}>Fires are counted on a 15 km grid (3 × 3 of today&apos;s 0.05° cells). Sea, lakes, barren land and ice are left out using the MCD12Q1 land cover of 2002–2024, every pixel counted, kept cells must be at least 5% burnable in every year; here that keeps {data.grid?.cells?.kept ?? '…'} of the {Object.values(data.grid?.cells ?? {}).reduce((a, b) => a + b, 0)} cells and drops {data.grid?.masked_share_of_fire_pct?.toFixed(2) ?? '…'}% of all fires.</p>
+          <p className={styles.body}>The outlook is the usual pattern per cell and month: the share of baseline years (complete years before the target year; chances use VIIRS years only, from 2013, because of how MODIS undercounts small fires) with at least one hotspot, shrunk toward its neighbours. Expected hotspots and ranges come from the full record from 2003.</p>
+          <p className={styles.body}><strong>How reliable (backtest on 2015–2025):</strong> {data.outlook.skill?.top10_capture_pct != null ? `${data.outlook.skill.top10_capture_pct.toFixed(1)}% of a month's fire fell in the top 10% of predicted cells` : 'not tested'}{data.outlook.skill?.brier != null ? `; Brier score ${data.outlook.skill.brier.toFixed(3)}` : ''}{data.outlook.skill?.big_years ? ` (2015: ${data.outlook.skill.big_years['2015'] ?? '—'}%, 2019: ${data.outlook.skill.big_years['2019'] ?? '—'}%, 2023: ${data.outlook.skill.big_years['2023'] ?? '—'}%)` : ''}.</p>
+        </section>
+      )}
+
       <section className={styles.section}>
         <h3 className={styles.heading}>Limits and notes</h3>
         <p className={styles.body}>Scaling assumes the MODIS–VIIRS relationship in the overlap years holds for earlier years in each area. Before 2012, Terra fills Aqua-blind days (gap-fill) so MODIS-era coverage is as complete as possible.</p>

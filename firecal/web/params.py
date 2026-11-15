@@ -101,24 +101,11 @@ def _coverage_status(area, regions):
     return None, None, False
 
 
-def parse_query(args, settings):
-    """Returns (Area, start, end, today, region, coverage_warning)."""
+def parse_area(args, settings):
+    """Parse bbox/point + radius_km without date checks. Returns (Area, region, warning)."""
     bbox = args.get("bbox")
     point = args.get("point")
     radius = args.get("radius_km")
-    start = args.get("start")
-    end = args.get("end")
-    if not start:
-        raise ParamError("missing start", "start")
-    if not end:
-        raise ParamError("missing end", "end")
-    try:
-        start_d = date.fromisoformat(start)
-        end_d = date.fromisoformat(end)
-    except ValueError:
-        raise ParamError("start/end must be YYYY-MM-DD", "start")
-    if start_d > end_d:
-        raise ParamError("start is after end", "start")
 
     if bbox:
         w, s, e, n = parse_bbox(bbox)
@@ -141,12 +128,32 @@ def parse_query(args, settings):
     else:
         raise ParamError("provide bbox=W,S,E,N or point=LAT,LON&radius_km=R", "bbox")
 
-    # coverage check (per-region: `today` and the end check use that region's latest date)
     cov = load_coverage(settings)
     regions = [(r.get("name"), r.get("bbox")) for r in cov if r.get("bbox")]
     region, warning, ok = _coverage_status(area, regions)
     if not ok:
         raise CoverageError("area is outside the covered regions", [r for r, _ in regions])
+    return area, region, warning
+
+
+def parse_query(args, settings):
+    """Returns (Area, start, end, today, region, coverage_warning)."""
+    start = args.get("start")
+    end = args.get("end")
+    if not start:
+        raise ParamError("missing start", "start")
+    if not end:
+        raise ParamError("missing end", "end")
+    try:
+        start_d = date.fromisoformat(start)
+        end_d = date.fromisoformat(end)
+    except ValueError:
+        raise ParamError("start/end must be YYYY-MM-DD", "start")
+    if start_d > end_d:
+        raise ParamError("start is after end", "start")
+
+    # coverage check (per-region: `today` and the end check use that region's latest date)
+    area, region, warning = parse_area(args, settings)
     latest = latest_data_date(settings, region)
     if latest and end_d > date.fromisoformat(latest):
         raise ParamError(f"end {end} is later than the latest data date {latest}", "end")

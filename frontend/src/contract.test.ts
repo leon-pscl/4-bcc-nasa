@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
   HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema,
+  OutlookResponseSchema, OutlookMapResponseSchema,
 } from './api/schemas';
 
 const mocks: [string, unknown][] = [
@@ -13,6 +14,8 @@ const mocks: [string, unknown][] = [
   ['api_hotspots.json', HotspotsResponseSchema],
   ['api_coverage.json', CoverageResponseSchema],
   ['api_methods.json', MethodsResponseSchema],
+  ['api_outlook.json', OutlookResponseSchema],
+  ['api_outlook_map.json', OutlookMapResponseSchema],
 ];
 
 describe('contract: mock files parse with schemas', () => {

@@ -2,19 +2,15 @@ import type { AppState, AreaState } from '../state/urlState';
 import type { CoverageResponse } from './schemas';
 import { areaKm2, pointAreaKm2, MAX_AREA_KM2 } from '../lib/geo';
 
-export function buildAreaParams(area: AreaState): URLSearchParams {
-  const p = new URLSearchParams();
-  if (area.kind === 'bbox') p.set('bbox', area.bbox.join(','));
-  else { p.set('point', area.point.join(',')); p.set('radius_km', String(area.radius_km)); }
-  return p;
+export function buildAreaParams(area: AreaState): string {
+  if (area.kind === 'bbox') return `bbox=${area.bbox.join(',')}`;
+  return `point=${area.point.join(',')}&radius_km=${area.radius_km}`;
 }
 
 export function buildQueryParams(state: Pick<AppState, 'area' | 'start' | 'end' | 'cover'>): string {
-  const p = buildAreaParams(state.area);
-  p.set('start', state.start);
-  p.set('end', state.end);
-  if (state.cover) p.set('cover', state.cover);
-  return p.toString();
+  const parts = [buildAreaParams(state.area), `start=${state.start}`, `end=${state.end}`];
+  if (state.cover) parts.push(`cover=${state.cover}`);
+  return parts.join('&');
 }
 
 export function isAreaValid(area: AreaState, coverage?: CoverageResponse): boolean {

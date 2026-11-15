@@ -68,7 +68,9 @@ def build_monthly(settings, region, years=None, dry_run=False):
         raise FileNotFoundError(f"C11 not built yet: {grid_path} (run build-grid first)")
 
     state = load_state(settings)
-    h_state = state.get(HARMONIZED, {})
+    h_state = state.setdefault(HARMONIZED, {})
+    grid_fp = state.get("grid_cells", {}).get(region, {}).get("fingerprint")
+    m_state = state.setdefault("monthly_cells", {})
     meta_path = Path(settings.DATA_PROCESSED) / "monthly_cells.meta.json"
     meta = {}
     if meta_path.exists():
@@ -89,6 +91,7 @@ def build_monthly(settings, region, years=None, dry_run=False):
     for y in available:
         fp = h_state.get(partition_key(region, y), {}).get("fingerprint")
         if fp and meta.get("years", {}).get(str(y), {}).get("fingerprint") == fp:
+            m_state[partition_key(region, y)] = {"fingerprint": fingerprint(fp, grid_fp, y)}
             continue  # C4 unchanged: keep existing partition
         target.append(y)
     print(f"monthly_cells: rebuilding years {target or 'none (all up to date)'}")
@@ -141,12 +144,18 @@ def build_monthly(settings, region, years=None, dry_run=False):
             ).fetchone()[0]
             totals[y] = {"fingerprint": h_state.get(partition_key(region, y), {}).get("fingerprint"),
                          "harmonized": harmonized, "kept": kept, "masked": harmonized - kept}
+            m_state[partition_key(region, y)] = {
+                "fingerprint": fingerprint(h_state.get(partition_key(region, y), {}).get("fingerprint"),
+                                           grid_fp, y)}
             print(f"year {y}: harmonized {harmonized:.1f} kept {kept:.1f} masked {harmonized - kept:.1f} "
                   f"({(harmonized - kept) / harmonized * 100 if harmonized else 0:.3f}%)")
     finally:
         con.close()
 
     latest = _latest_date(settings, region)
+    if not dry_run:
+        from firecal.dataset import save_state
+        save_state(settings, state)
     meta_years = meta.get("years", {})
     meta_years.update({str(y): t for y, t in totals.items()})
     meta = {

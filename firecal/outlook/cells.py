@@ -121,4 +121,10 @@ def build_grid_cells(settings, region, dry_run=False):
     validate_grid_cells(pd.read_parquet(tmp))
     os.replace(tmp, root / "part-0.parquet")
     tmp.parent.rmdir()
+    # record a content fingerprint so downstream datasets can key off it
+    from firecal.dataset import load_state, save_state, fingerprint
+    grid_fp = fingerprint(*pd.util.hash_pandas_object(df, index=False).astype(str).tolist())
+    state = load_state(settings)
+    state.setdefault("grid_cells", {})[region] = {"fingerprint": grid_fp}
+    save_state(settings, state)
     return df

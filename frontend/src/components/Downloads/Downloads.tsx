@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppState } from '../../state/useAppState';
 import { useQueryParams } from '../../api/hooks';
+import { buildAreaParams } from '../../api/params';
 import { formatDate } from '../../lib/format';
 import styles from './Downloads.module.css';
 
@@ -28,9 +29,14 @@ export default function Downloads() {
   })();
 
   const q = params;
+  const areaQ = buildAreaParams(state.area);
+  const dateQ = `start=${state.start}&end=${state.end}`;
   const hsHref = `/api/hotspots.csv?${q}&all_sensors=${allSensors ? 1 : 0}`;
   const calHref = `/api/calendar.csv?${q}`;
   const pngHref = `/api/calendar.png?${q}`;
+  const outlookHref = `/api/outlook.csv?${areaQ}`;
+  const cellsCsvHref = `/api/cells.csv?${areaQ}&${dateQ}`;
+  const cellsParquetHref = `/api/cells.parquet?${areaQ}&${dateQ}`;
   const disabled = mock || !q;
 
   return (
@@ -45,7 +51,13 @@ export default function Downloads() {
         <a className={`${styles.btn} ${disabled ? styles.disabled : ''}`} href={calHref} download aria-disabled={disabled} tabIndex={disabled ? -1 : 0} onClick={(e) => { if (disabled) e.preventDefault(); }}>Calendar CSV</a>
         <a className={`${styles.btn} ${disabled ? styles.disabled : ''}`} href={pngHref} download aria-disabled={disabled} tabIndex={disabled ? -1 : 0} onClick={(e) => { if (disabled) e.preventDefault(); }}>Calendar image (PNG)</a>
       </div>
+      <div className={styles.row}>
+        <a className={`${styles.btn} ${disabled ? styles.disabled : ''}`} href={outlookHref} download aria-disabled={disabled} tabIndex={disabled ? -1 : 0} onClick={(e) => { if (disabled) e.preventDefault(); }}>Outlook CSV</a>
+        <a className={`${styles.btn} ${disabled ? styles.disabled : ''}`} href={cellsCsvHref} download aria-disabled={disabled} tabIndex={disabled ? -1 : 0} onClick={(e) => { if (disabled) e.preventDefault(); }}>Monthly 15 km cells CSV</a>
+        <a className={`${styles.btn} ${disabled ? styles.disabled : ''}`} href={cellsParquetHref} download aria-disabled={disabled} tabIndex={disabled ? -1 : 0} onClick={(e) => { if (disabled) e.preventDefault(); }}>Monthly 15 km cells Parquet</a>
+      </div>
       {mock ? <p className={styles.note}>Downloads need the live API.</p> : null}
+      <p className={styles.note}>Outlook CSV: every kept 15 km cell × the three leads. One row per cell and month with fire; months without a row had none.</p>
       <p className={styles.note}>Hotspots CSV: one row per detection, with date, UTC time, latitude, longitude, confidence, fire radiative power, day/night and sensor. By default it holds only the detections behind the calendar; tick &quot;Include all sensors&quot; for every MODIS and VIIRS detection in the area.</p>
     </section>
   );

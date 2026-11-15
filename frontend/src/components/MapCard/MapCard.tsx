@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Rectangle, Circle, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { useAppState } from '../../state/useAppState';
-import { useQueryParams, useMap as useMapData, useCalendar } from '../../api/hooks';
+import { useQueryParams, useMap as useMapData, useCalendar, useOutlook, useOutlookMap } from '../../api/hooks';
+import { buildAreaParams } from '../../api/params';
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
 import { formatNumber, formatDate, formatLat, formatLon, formatDeg } from '../../lib/format';
-import { COUNT_RAMP, countBins, countColor } from '../../lib/colors';
+import { COUNT_RAMP, countBins, countColor, CHANCE_BINS, chanceColor } from '../../lib/colors';
 import { areaKey, type AppState, type AreaState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
@@ -14,6 +15,7 @@ type PointDraft = { lat: string; lon: string; radius: string };
 const emptyBox: BoxDraft = { n: '', s: '', e: '', w: '' };
 const emptyPoint: PointDraft = { lat: '', lon: '', radius: '' };
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function boundsFromArea(area: AreaState): [[number, number], [number, number]] | null {
   if (area.kind === 'bbox') { const [w, s, e, n] = area.bbox; return [[s, w], [n, e]]; }
@@ -126,6 +128,12 @@ export default function MapCard() {
   const monthParam = state.focus ?? undefined;
   const { data: mapData } = useMapData(params, monthParam);
   const { data: calendar } = useCalendar(params);
+  const areaParams = state ? buildAreaParams(state.area) : '';
+  const layer: 'history' | 'outlook' = state?.layer ?? 'history';
+  const lead = state?.lead ?? 1;
+  const outlookOn = layer === 'outlook';
+  const { data: outlook } = useOutlook(areaParams, outlookOn);
+  const { data: outlookMap } = useOutlookMap(areaParams, lead, outlookOn);
   const [mode, setMode] = useState<'box' | 'point'>('box');
   const [boxDraft, setBoxDraft] = useState<BoxDraft | null>(null);
   const [pointDraft, setPointDraft] = useState<PointDraft>(emptyPoint);
@@ -137,6 +145,13 @@ export default function MapCard() {
   const liveRef = useRef<{ a: LatLng; b: LatLng } | null>(null);
   const [live, setLiveState] = useState<{ a: LatLng; b: LatLng } | null>(null);
   const setLive = (v: { a: LatLng; b: LatLng } | null) => { liveRef.current = v; setLiveState(v); };
+
+  // pan to the outlook cell picked in the Outlook tab ("Show on map")
+  useEffect(() => {
+    if (!map || !state?.cell) return;
+    const [lat, lon] = state.cell;
+    map.setView([lat, lon], Math.max(map.getZoom(), 8));
+  }, [map, state?.cell]);
 
   useEffect(() => {
     if (!state) return;
@@ -316,7 +331,7 @@ export default function MapCard() {
               <Tooltip>{r.label}</Tooltip>
             </Rectangle>
           ))}
-          {mapData?.cells.map((c, i) => {
+          {!outlookOn && mapData?.cells.map((c, i) => {
             const g = mapData.grid_deg;
             const half = g / 2;
             const color = countColor(c.value, mapBins);
@@ -327,6 +342,22 @@ export default function MapCard() {
               </Rectangle>
             );
           })}
+          {outlookOn && outlookMap?.cells.map((c) => {
+            const half = outlookMap.grid_deg / 2;
+            const color = chanceColor(c.p_fire);
+            const target = outlookMap.target;
+            const mLabel = `${MONTH_FULL[target.month - 1]} ${target.year}`;
+            return (
+              <Rectangle key={`${c.lat}-${c.lon}`} bounds={[[c.lat - half, c.lon - half], [c.lat + half, c.lon + half]]}
+                pathOptions={{ color, weight: 0.5, fillColor: color, fillOpacity: 0.75 }}>
+                <Popup>{`${mLabel} · ${Math.round(c.p_fire * 100)}% chance of fire activity · about ${formatNumber(c.expected)} hotspots`}</Popup>
+              </Rectangle>
+            );
+          })}
+          {state?.cell && (
+            <Rectangle bounds={[[state.cell[0] - 0.075, state.cell[1] - 0.075], [state.cell[0] + 0.075, state.cell[1] + 0.075]]}
+              pathOptions={{ color: '#0f0f0f', weight: 2.5, fillColor: '#0f0f0f', fillOpacity: 0.12, dashArray: '6 4' }} />
+          )}
           {mode === 'box' && rectBounds && <Rectangle bounds={rectBounds} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
           {mode === 'point' && pointValid && <Circle center={[pLat, pLon]} radius={pRad * 1000} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
           <DrawController drawing={drawing && mode === 'box'} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onAbort={abortDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
@@ -361,10 +392,30 @@ export default function MapCard() {
 
       <div className={styles.footer}>
         <div className={styles.footerLeft}>
-          <span>Map shows <strong>{footerText.label}</strong>{footerText.focused ? <> <button type="button" className={styles.linkBtn} onClick={() => dispatch({ type: 'patch', patch: { focus: undefined } })}>Show full record</button></> : null}</span>
+          {!outlookOn ? (
+            <span>Map shows <strong>{footerText.label}</strong>{footerText.focused ? <> <button type="button" className={styles.linkBtn} onClick={() => dispatch({ type: 'patch', patch: { focus: undefined } })}>Show full record</button></> : null}</span>
+          ) : (
+            <span>Outlook (experimental) · <strong>{outlookMap ? `${MONTH_FULL[outlookMap.target.month - 1]} ${outlookMap.target.year}` : '…'}</strong> — chance of fire activity</span>
+          )}
+          <div className={styles.layerSwitch} role="group" aria-label="Map layer">
+            <button type="button" className={styles.layerBtn} aria-pressed={!outlookOn} onClick={() => dispatch({ type: 'patch', patch: { layer: 'history' } })}>History</button>
+            <button type="button" className={styles.layerBtn} aria-pressed={outlookOn} onClick={() => dispatch({ type: 'patch', patch: { layer: 'outlook' } })}>Outlook</button>
+          </div>
         </div>
-        <div className={styles.legend}><span>Hotspots per cell</span>{COUNT_RAMP.map((c) => <span key={c} className={styles.legendSwatch} style={{ background: c }} />)}<span>fewer to more</span></div>
-        {mapData?.aggregated_to != null ? <div className={styles.agg}>Shown on a coarser {mapData.aggregated_to}° grid to keep the map fast.</div> : null}
+        {!outlookOn ? (
+          <div className={styles.legend}><span>Hotspots per cell</span>{COUNT_RAMP.map((c) => <span key={c} className={styles.legendSwatch} style={{ background: c }} />)}<span>fewer to more</span></div>
+        ) : (
+          <div className={styles.legend}><span>Chance of fire</span>{CHANCE_BINS.map((b) => <span key={b.label} className={styles.legendSwatch} style={{ background: b.color }} title={b.label} />)}<span>rare to likely</span></div>
+        )}
+        {outlookOn && (
+          <div className={styles.layerSwitch} role="group" aria-label="Outlook month">
+            {(outlook?.months ?? []).map((m) => (
+              <button key={m.lead} type="button" className={styles.layerBtn} aria-pressed={lead === m.lead} onClick={() => dispatch({ type: 'patch', patch: { lead: m.lead as 1 | 2 | 3 } })}>{MONTH_SHORT[m.month - 1]}</button>
+            ))}
+          </div>
+        )}
+        {outlookOn ? <div className={styles.agg}>15 km cells. Sea, lakes, barren land and ice are left out. &ldquo;fire activity&rdquo; = at least 1 hotspot in the cell that month.</div> : null}
+        {!outlookOn && mapData?.aggregated_to != null ? <div className={styles.agg}>Shown on a coarser {mapData.aggregated_to}° grid to keep the map fast.</div> : null}
       </div>
 
       <form className={styles.query} onSubmit={(e) => { e.preventDefault(); analyze(); }}>

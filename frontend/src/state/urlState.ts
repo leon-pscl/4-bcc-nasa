@@ -16,8 +16,11 @@ export interface AppState {
   end: string;
   view: 'count' | 'anomaly';
   focus?: string;
-  tab: 'comparisons' | 'watchlist' | 'methods';
+  tab: 'comparisons' | 'outlook' | 'methods';
   cover: Cover;
+  layer: 'history' | 'outlook';
+  lead: 1 | 2 | 3;
+  cell?: [number, number];
 }
 
 export function parseHash(hash: string): Partial<AppState> {
@@ -44,11 +47,21 @@ export function parseHash(hash: string): Partial<AppState> {
   const focus = params.get('focus');
   if (focus) out.focus = focus;
   const tab = params.get('tab');
-  // watchlist is not shipped (6i); an old hash carrying it lands on Comparisons
-  if (tab === 'comparisons' || tab === 'methods') out.tab = tab;
+  if (tab === 'comparisons' || tab === 'outlook' || tab === 'methods') out.tab = tab;
   const cover = params.get('cover');
   if (cover === 'forest' || cover === 'farmland' || cover === 'other') out.cover = cover;
   else out.cover = 'all';
+  const layer = params.get('layer');
+  out.layer = layer === 'outlook' ? 'outlook' : 'history';
+  const lead = params.get('lead');
+  out.lead = lead === '2' ? 2 : lead === '3' ? 3 : 1;
+  const cell = params.get('cell');
+  if (cell) {
+    const parts = cell.split(',').map(Number);
+    if (parts.length === 2 && parts.every(Number.isFinite)) {
+      out.cell = parts as [number, number];
+    }
+  }
   return out;
 }
 
@@ -65,5 +78,8 @@ export function toHash(state: AppState): string {
   if (state.focus) params.set('focus', state.focus);
   params.set('tab', state.tab);
   if (state.cover && state.cover !== 'all') params.set('cover', state.cover);
+  if (state.layer === 'outlook') params.set('layer', 'outlook');
+  if (state.layer === 'outlook') params.set('lead', String(state.lead));
+  if (state.cell) params.set('cell', state.cell.join(','));
   return `#${params.toString()}`;
 }
