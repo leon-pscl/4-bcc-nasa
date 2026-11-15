@@ -16,6 +16,7 @@
 | docs/readme (step 4) | docs/readme | c2f6575 | #132744901700 success | 26457b5 | v2-southeast-asia-outlook → 26457b5 | done | nothing |
 | Release v2.0.1 (cloud) | releasex | e93b2af | n/a (tag on releasex) | n/a | v2.0.1 → e93b2af | done | owner fast-forward main to v2.0.1 |
 | Release v2.1 (Azure merge) | release/v2.1 | 95e80d7 | n/a (merge into pascual) | 95e80d7 | v2.1-southeast-asia-outlook → 95e80d7 | done | owner FF main via `git push origin v2.1-southeast-asia-outlook^{commit}:refs/heads/main`; team-lead uploads processed_data_v2.zip |
+| Release v2.1.1 (rows_note) | pascual | 116cae4 | n/a | 116cae4 | v2.1.1-southeast-asia-outlook → 116cae4 | done | owner FF main via `git push origin v2.1.1-southeast-asia-outlook^{commit}:refs/heads/main` |
 
 ## Data on the PC
 
