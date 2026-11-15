@@ -26,6 +26,7 @@ data/raw/
 data/processed/
 data/synthetic/
 data/_quarantine/
+data/snapshots/
 data/*.log
 data/*.err
 

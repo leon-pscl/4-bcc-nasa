@@ -7,7 +7,8 @@ import time
 
 from firecal.config import Settings
 from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
-                             acquire_writer_lock, release_writer_lock, validation_path)
+                             acquire_writer_lock, release_writer_lock, validation_path,
+                             sweep_leftovers)
 
 
 def main(lock_fd=None):
@@ -22,6 +23,7 @@ def main(lock_fd=None):
     own = lock_fd is None
     if own:
         lock_fd = acquire_writer_lock(settings)
+        sweep_leftovers(settings)
     try:
         # --recalibrate: drop the calibration fingerprint so calibration is refit
         if getattr(args, "recalibrate", False) and args.region:

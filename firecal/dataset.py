@@ -78,6 +78,87 @@ def dataset_dir(settings, name):
     return processed_root(settings) / name
 
 
+def _tree_size(path):
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def validate_duckdb_temp_dir(settings):
+    """Refuse a DUCKDB_TEMP_DIR the sweep must not empty. Raises SystemExit.
+
+    The sweep deletes everything inside DUCKDB_TEMP_DIR, so a wrong setting must
+    not point at (or sit inside/above) real data. Allowed: a dedicated folder
+    whose last name contains "duckdb", e.g. /tmp/duckdb.
+    """
+    temp = getattr(settings, "DUCKDB_TEMP_DIR", None)
+    if not temp:
+        return
+    t = os.path.normcase(os.path.realpath(temp))
+    name = Path(t).name.lower()
+    if "duckdb" not in name:
+        raise SystemExit(
+            f"refusing DUCKDB_TEMP_DIR={temp!r}: last folder name must contain 'duckdb'")
+    if Path(t).anchor == t:  # filesystem root ("/" or a drive root)
+        raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: filesystem root")
+    refused = {os.path.normcase(os.path.realpath(p)) for p in
+               ("/", "/tmp", str(Path.home()), settings.DATA_RAW, settings.DATA_PROCESSED)}
+    for other in list(refused):
+        if t == other:
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: equals {other!r}")
+    for other in (os.path.normcase(os.path.realpath(settings.DATA_RAW)),
+                  os.path.normcase(os.path.realpath(settings.DATA_PROCESSED))):
+        sep = os.sep
+        if t.startswith(other + sep):
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: inside {other!r}")
+        if other.startswith(t + sep):
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: above {other!r}")
+
+
+def sweep_leftovers(settings, log=print):
+    """Delete leftovers from killed/crashed runs. Call after taking the writer lock.
+
+    Removes `_part_*` staging dirs anywhere under DATA_PROCESSED, `_staging/`,
+    stray `*.tmp` files, and the contents of the DuckDB temp dir. Returns
+    (items_removed, bytes_freed); logs one summary line.
+    """
+    root = processed_root(settings)
+    validate_duckdb_temp_dir(settings)
+    removed = 0
+    freed = 0
+    if root.exists():
+        for p in sorted(root.rglob("_part_*"), key=lambda p: len(p.parts), reverse=True):
+            if p.is_dir() and p.exists():
+                freed += _tree_size(p)
+                shutil.rmtree(p, ignore_errors=True)
+                removed += 1
+        staging = root / "_staging"
+        if staging.is_dir():
+            freed += _tree_size(staging)
+            shutil.rmtree(staging, ignore_errors=True)
+            removed += 1
+        for p in list(root.rglob("*.tmp")):
+            if p.is_file():
+                try:
+                    freed += p.stat().st_size
+                    p.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+    temp_dir = getattr(settings, "DUCKDB_TEMP_DIR", None)
+    if temp_dir and os.path.isdir(temp_dir):
+        for child in Path(temp_dir).iterdir():
+            freed += _tree_size(child) if child.is_dir() else child.stat().st_size
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                try:
+                    child.unlink()
+                except OSError:
+                    pass
+            removed += 1
+    log(f"sweep: removed {removed} item(s), freed {freed / 1e9:.2f} GB")
+    return removed, freed
+
+
 def state_path(settings):
     return processed_root(settings) / STATE_FILE
 

@@ -2,7 +2,8 @@
 
 web:      DUCKDB_WEB_MEMORY_LIMIT (default 1GB), DUCKDB_WEB_THREADS (default 2)
 pipeline: DUCKDB_PIPELINE_MEMORY_LIMIT (default 2GB), DUCKDB_PIPELINE_THREADS (default 4),
-          temp_directory=DUCKDB_TEMP_DIR (default /tmp/duckdb, not the bind mount)
+          temp_directory=DUCKDB_TEMP_DIR (default /tmp/duckdb, not the bind mount),
+          max_temp_directory_size=DUCKDB_MAX_TEMP_DIRECTORY_SIZE (default 20GB)
 """
 
 import os
@@ -25,6 +26,10 @@ def connect(settings, role="web"):
     limit = str(limit).strip()
     if not _LIMIT_RE.fullmatch(limit):
         raise ValueError(f"invalid DuckDB memory_limit: {limit!r}")
+    if role != "web":
+        max_temp = str(getattr(settings, "DUCKDB_MAX_TEMP_DIRECTORY_SIZE", "20GB")).strip()
+        if not _LIMIT_RE.fullmatch(max_temp):
+            raise ValueError(f"invalid DuckDB max_temp_directory_size: {max_temp!r}")
     threads = max(1, threads)
     con = duckdb.connect()
     con.execute(f"PRAGMA threads={threads}")
@@ -32,4 +37,5 @@ def connect(settings, role="web"):
     if temp:
         os.makedirs(temp, exist_ok=True)
         con.execute(f"PRAGMA temp_directory='{temp.replace(os.sep, '/')}'")
+        con.execute(f"SET max_temp_directory_size='{max_temp}'")
     return con

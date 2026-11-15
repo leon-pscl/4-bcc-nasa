@@ -6,7 +6,8 @@ services:
     ports:
       - "127.0.0.1:8080:8000"
     volumes:
-      - ./data:/app/data:ro
+      # DATA_DIR points at the data drive; the web container stays read-only
+      - ${DATA_DIR:-./data}:/app/data:ro
     environment:
       - FLASK_DEBUG=0
     mem_limit: 4g
@@ -29,7 +30,9 @@ services:
       target: pipeline
     command: ["sh", "-c", "while true; do if pipeline update --all; then sleep 86400; else echo 'update failed; retrying in 1h'; sleep 3600; fi; done"]
     volumes:
-      - ./data:/app/data
+      - ${DATA_DIR:-./data}:/app/data
+      # DuckDB spill files live on a named volume, not the container's writable layer
+      - duckdb-tmp:/tmp/duckdb
     environment:
       - FLASK_DEBUG=0
       # .env is used by compose for interpolation; only the key is passed through
@@ -41,3 +44,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  duckdb-tmp:
