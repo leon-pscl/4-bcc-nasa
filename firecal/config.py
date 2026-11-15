@@ -71,6 +71,15 @@ class Settings:
     NOAA20_SP_START: str = "2018-04-01"
     NOAA21_SP_START: str = "2023-03-01"
     API_CACHE_MB: int = 32
+    OUTLOOK_GRID_DEG: float = 0.15
+    MASK_NONBURNABLE_CLASSES: tuple = (15, 16, 17, 255)
+    MASK_MIN_BURNABLE_PCT: float = 5.0
+    OUTLOOK_FIRE_THRESHOLD: int = 1
+    OUTLOOK_LEADS: int = 3
+    OUTLOOK_CLIM_SHRINK_M: int = 3
+    OUTLOOK_NBR: int = 2
+    OUTLOOK_TEST_YEARS: tuple = (2015, 2025)
+    OUTLOOK_PFIRE_START: int = 2013
 
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"
@@ -107,6 +116,10 @@ class Settings:
                     setattr(s, key, int(val))
                 except ValueError:
                     pass
+        # the 15 km grid must nest exactly in the fine grid (3 x 3 cells)
+        if s.OUTLOOK_GRID_DEG <= 0 or abs(s.OUTLOOK_GRID_DEG / s.GRID_DEG - round(s.OUTLOOK_GRID_DEG / s.GRID_DEG)) > 1e-9 or int(round(s.OUTLOOK_GRID_DEG / s.GRID_DEG)) < 1:
+            raise SystemExit(
+                f"refusing OUTLOOK_GRID_DEG={s.OUTLOOK_GRID_DEG}: must be a whole multiple of GRID_DEG={s.GRID_DEG}")
         from firecal.dataset import validate_duckdb_temp_dir
         validate_duckdb_temp_dir(s)
         return s

@@ -91,6 +91,44 @@ def generate(settings, region="bolivia_east", seed=42):
     return df
 
 
+def generate_grid_cells(settings, region="bolivia_east", masked=6, seed=42):
+    """Synthetic C11 grid_cells (small): a few masked cells, rest kept."""
+    import numpy as np
+    import pandas as pd
+    from firecal.outlook import grid as _grid
+
+    if region in settings.REGIONS:
+        bbox = settings.REGIONS[region]
+    else:
+        bbox = (-64, -18, -60, -14)
+    w, s, e, n = bbox
+    la_lo, la_hi, lo_lo, lo_hi = _grid.g_index_range(w, s, e, n)
+    rows = []
+    for la in range(la_lo, la_hi + 1):
+        for lo in range(lo_lo, lo_hi + 1):
+            rows.append((la, lo))
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(rows))
+    masked_idx = set(order[:masked].tolist()) if masked else set()
+    records = []
+    for i, (la, lo) in enumerate(rows):
+        is_masked = i in masked_idx
+        records.append({
+            "region": region,
+            "g_lat_idx": np.int32(la), "g_lon_idx": np.int32(lo),
+            "center_lat": round(_grid.g_center(la), 4), "center_lon": round(_grid.g_center(lo), 4),
+            "fine_cells": np.int8(9),
+            "area_km2": np.float64(278.0),
+            "water_pct": 99.0 if is_masked else 10.0,
+            "barren_pct": 0.0, "snow_ice_pct": 0.0,
+            "burnable_pct": 0.5 if is_masked else 80.0,
+            "forest_pct": 50.0, "crop_pct": 5.0,
+            "keep": not is_masked,
+            "mask_reason": "water" if is_masked else "kept",
+        })
+    return pd.DataFrame.from_records(records)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--region", default="bolivia_east")

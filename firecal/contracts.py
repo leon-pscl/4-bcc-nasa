@@ -6,6 +6,61 @@ from typing import List
 import pandas as pd
 
 
+# C10: 0.05 deg surface aggregates per granule year (mask input)
+SURFACE_COLUMNS: List[str] = [
+    "region", "cell_lat_idx", "cell_lon_idx", "total_px",
+    "water_pct", "barren_pct", "snow_ice_pct", "burnable_pct_max", "burnable_year_max",
+]
+
+# C11: 0.15 deg grid cells (mask)
+GRID_CELLS_COLUMNS: List[str] = [
+    "region", "g_lat_idx", "g_lon_idx", "center_lat", "center_lon",
+    "fine_cells", "area_km2", "water_pct", "barren_pct", "snow_ice_pct",
+    "burnable_pct", "forest_pct", "crop_pct", "keep", "mask_reason",
+]
+
+# C12: 0.15 deg cell-months (value > 0 only; zeros implied)
+MONTHLY_CELLS_COLUMNS: List[str] = [
+    "region", "year", "month", "g_lat_idx", "g_lon_idx", "value",
+    "value_forest", "value_farmland", "value_other", "fine_celldays",
+]
+
+# C13: climatology per kept cell x calendar month
+CLIMATOLOGY_COLUMNS: List[str] = [
+    "region", "g_lat_idx", "g_lon_idx", "month",
+    "baseline_first", "baseline_last", "n_years",
+    "p_fire", "mean", "median", "p25", "p75", "rank_in_year",
+]
+
+# C14: outlook issues (climatology tonight)
+OUTLOOK_COLUMNS: List[str] = [
+    "region", "issued", "lead", "target_year", "target_month",
+    "g_lat_idx", "g_lon_idx", "p_fire", "expected",
+    "p_fire_clim", "mean_clim", "model",
+]
+
+VALID_MASK_REASON = {"kept", "water", "barren", "snow_ice"}
+
+def validate_surface(df: pd.DataFrame) -> None:
+    _check_columns(df, SURFACE_COLUMNS, "cell_surface")
+
+def validate_grid_cells(df: pd.DataFrame) -> None:
+    _check_columns(df, GRID_CELLS_COLUMNS, "grid_cells")
+    bad = set(df["mask_reason"].dropna().unique()) - VALID_MASK_REASON
+    if bad:
+        raise ValueError(f"grid_cells: unknown mask_reason values: {sorted(bad)}")
+
+def validate_monthly_cells(df: pd.DataFrame) -> None:
+    _check_columns(df, MONTHLY_CELLS_COLUMNS, "monthly_cells")
+
+def validate_climatology(df: pd.DataFrame) -> None:
+    _check_columns(df, CLIMATOLOGY_COLUMNS, "climatology")
+
+def validate_outlook(df: pd.DataFrame) -> None:
+    _check_columns(df, OUTLOOK_COLUMNS, "outlook")
+    if set(df["model"].dropna().unique()) - {"climatology"}:
+        raise ValueError("outlook: model must be 'climatology' tonight")
+
 # C1: detections
 DETECTIONS_COLUMNS: List[str] = [
     "uid", "sensor", "platform", "processing", "latitude", "longitude",
