@@ -82,6 +82,37 @@ def _tree_size(path):
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
+def validate_duckdb_temp_dir(settings):
+    """Refuse a DUCKDB_TEMP_DIR the sweep must not empty. Raises SystemExit.
+
+    The sweep deletes everything inside DUCKDB_TEMP_DIR, so a wrong setting must
+    not point at (or sit inside/above) real data. Allowed: a dedicated folder
+    whose last name contains "duckdb", e.g. /tmp/duckdb.
+    """
+    temp = getattr(settings, "DUCKDB_TEMP_DIR", None)
+    if not temp:
+        return
+    t = os.path.normcase(os.path.realpath(temp))
+    name = Path(t).name.lower()
+    if "duckdb" not in name:
+        raise SystemExit(
+            f"refusing DUCKDB_TEMP_DIR={temp!r}: last folder name must contain 'duckdb'")
+    if Path(t).anchor == t:  # filesystem root ("/" or a drive root)
+        raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: filesystem root")
+    refused = {os.path.normcase(os.path.realpath(p)) for p in
+               ("/", "/tmp", str(Path.home()), settings.DATA_RAW, settings.DATA_PROCESSED)}
+    for other in list(refused):
+        if t == other:
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: equals {other!r}")
+    for other in (os.path.normcase(os.path.realpath(settings.DATA_RAW)),
+                  os.path.normcase(os.path.realpath(settings.DATA_PROCESSED))):
+        sep = os.sep
+        if t.startswith(other + sep):
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: inside {other!r}")
+        if other.startswith(t + sep):
+            raise SystemExit(f"refusing DUCKDB_TEMP_DIR={temp!r}: above {other!r}")
+
+
 def sweep_leftovers(settings, log=print):
     """Delete leftovers from killed/crashed runs. Call after taking the writer lock.
 
@@ -90,6 +121,7 @@ def sweep_leftovers(settings, log=print):
     (items_removed, bytes_freed); logs one summary line.
     """
     root = processed_root(settings)
+    validate_duckdb_temp_dir(settings)
     removed = 0
     freed = 0
     if root.exists():

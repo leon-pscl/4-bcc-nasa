@@ -107,4 +107,6 @@ class Settings:
                     setattr(s, key, int(val))
                 except ValueError:
                     pass
+        from firecal.dataset import validate_duckdb_temp_dir
+        validate_duckdb_temp_dir(s)
         return s

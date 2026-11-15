@@ -88,6 +88,38 @@ def test_ingest_state_has_no_staging_key(tmp_path):
     assert all("staging" not in e for e in state.get("files", {}).values())
 
 
+def test_duckdb_temp_dir_guard(tmp_path):
+    from firecal.dataset import validate_duckdb_temp_dir
+    s = _settings(tmp_path)
+    s.DATA_RAW = str(tmp_path / "raw")
+    s.DATA_PROCESSED = str(tmp_path / "processed")
+
+    ok = tmp_path / "duckdb_tmp"
+    s.DUCKDB_TEMP_DIR = str(ok)  # contains "duckdb", not inside/above data
+    validate_duckdb_temp_dir(s)  # must not raise
+    s.DUCKDB_TEMP_DIR = "/tmp/duckdb"
+    validate_duckdb_temp_dir(s)  # accepted
+
+    refused = [
+        "/",
+        os.path.realpath("/"),          # filesystem root (drive root on Windows)
+        "/tmp",
+        str(Path.home()),
+        s.DATA_RAW,
+        s.DATA_PROCESSED,
+        str(Path(s.DATA_RAW) / "sub" / "duckdb"),        # inside DATA_RAW
+        str(Path(s.DATA_PROCESSED) / "duckdb"),          # inside DATA_PROCESSED
+        str(Path(s.DATA_RAW).parent) ,                   # above DATA_RAW (tmp_path)
+        str(Path(s.DATA_PROCESSED).parent),              # above DATA_PROCESSED
+        str(tmp_path / "spill"),                         # last name lacks "duckdb"
+    ]
+    for bad in refused:
+        s.DUCKDB_TEMP_DIR = bad
+        with pytest.raises(SystemExit) as exc:
+            validate_duckdb_temp_dir(s)
+        assert "DUCKDB_TEMP_DIR" in str(exc.value)
+
+
 def test_sweep_removes_leftovers_and_keeps_partitions(tmp_path):
     from firecal.dataset import sweep_leftovers
     s = _settings(tmp_path)
