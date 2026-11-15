@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppState } from '../../state/useAppState';
 import { useQueryParams, useHotspots } from '../../api/hooks';
 import { buildAreaParams } from '../../api/params';
@@ -22,6 +22,17 @@ export default function HotspotTable() {
   const { valid } = useQueryParams(state);
   const [page, setPage] = useState(1);
   const [showSensors, setShowSensors] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setVisible(true);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   const focus = state.focus;
   const range = useMemo(() => focus ? clipRange(focus, state.start, state.end) : { start: state.start, end: state.end }, [focus, state.start, state.end]);
@@ -37,7 +48,7 @@ export default function HotspotTable() {
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) { setLastKey(key); setPage(1); }
 
-  const { data, isLoading } = useHotspots(params, page, showSensors);
+  const { data, isLoading, isFetching } = useHotspots(params, page, showSensors, visible);
 
   if (!valid) return null;
 
@@ -56,7 +67,7 @@ export default function HotspotTable() {
   })();
 
   return (
-    <section className={styles.card}>
+    <section className={styles.card} ref={ref as any}>
       <div className={styles.header}>
         <h2 className={styles.title}>Hotspots in this search</h2>
         <div className={styles.count}>{headingRight}</div>
@@ -64,7 +75,8 @@ export default function HotspotTable() {
       <div className={styles.controls}>
         <label className={styles.check}><input type="checkbox" checked={showSensors} onChange={(e) => { setShowSensors(e.target.checked); setPage(1); }} /> Show sensor details</label>
       </div>
-      {isLoading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>{data?.rows_note ?? 'No hotspots in this area and date range.'}</p> : (
+      {isFetching && !isLoading ? <p className={styles.muted}>Updating…</p> : null}
+  {isLoading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>{data?.rows_note ?? 'No hotspots in this area and date range.'}</p> : (
         <>
           <div className={styles.tableWrap}>
             <table className={styles.table}>

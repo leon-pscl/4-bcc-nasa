@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
@@ -27,6 +27,8 @@ export function useCalendar(params: string) {
     queryKey: ['calendar', params],
     queryFn: () => apiFetch('calendar', `/api/calendar?${params}`, CalendarResponseSchema),
     enabled: params.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -35,6 +37,8 @@ export function useSummary(params: string) {
     queryKey: ['summary', params],
     queryFn: () => apiFetch('summary', `/api/summary?${params}`, SummaryResponseSchema),
     enabled: params.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -44,15 +48,19 @@ export function useMap(params: string, month?: string) {
     queryKey: ['map', params, month ?? ''],
     queryFn: () => apiFetch('map', `/api/map?${q}`, MapResponseSchema),
     enabled: params.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
-export function useHotspots(params: string, page: number, allSensors: boolean) {
+export function useHotspots(params: string, page: number, allSensors: boolean, enabled = true) {
   const q = `${params}&page=${page}&page_size=100&all_sensors=${allSensors ? 1 : 0}`;
   return useQuery({
     queryKey: ['hotspots', params, page, allSensors],
     queryFn: () => apiFetch('hotspots', `/api/hotspots?${q}`, HotspotsResponseSchema),
-    enabled: params.length > 0,
+    enabled: enabled && params.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -69,6 +77,8 @@ export function useSeries(params: string) {
     queryKey: ['series', params],
     queryFn: () => apiFetch('series', `/api/series?${params}`, SeriesResponseSchema),
     enabled: params.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -77,6 +87,8 @@ export function useOutlook(areaParams: string, enabled = true) {
     queryKey: ['outlook', areaParams],
     queryFn: () => apiFetch('outlook', `/api/outlook?${areaParams}`, OutlookResponseSchema),
     enabled: enabled && areaParams.length > 0,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -85,5 +97,7 @@ export function useOutlookMap(areaParams: string, lead: number, enabled = true) 
     queryKey: ['outlook-map', areaParams, lead],
     queryFn: () => apiFetch('outlook_map', `/api/outlook/map?${areaParams}&lead=${lead}`, OutlookMapResponseSchema),
     enabled: enabled && areaParams.length > 0 && lead >= 1 && lead <= 3,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
