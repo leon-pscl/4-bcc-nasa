@@ -1,4 +1,4 @@
-"""CLI for firecal.cells: rebuild the changed celldays partitions."""
+﻿"""CLI for firecal.cells: rebuild the changed celldays partitions."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ import sys
 import time
 
 from firecal.config import Settings
-from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, MONTHLY_CELLS, OUTLOOK, write_data_versions,
                              acquire_writer_lock, release_writer_lock, sweep_leftovers)
 
 
@@ -27,7 +27,7 @@ def main(lock_fd=None):
     try:
         rebuilt = rebuild(settings, region=args.region,
                           force_years=set(args.years) if args.years else None)
-        versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+        versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
     finally:
         if own:
             release_writer_lock(lock_fd)
@@ -37,3 +37,5 @@ def main(lock_fd=None):
 
 if __name__ == "__main__":
     main()
+
+
