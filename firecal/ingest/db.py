@@ -334,6 +334,8 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
                 """
             else:
                 part_sql = f"SELECT {cols} FROM {union}"
+            # deterministic physical order; do not change column types
+            part_sql += " ORDER BY date_local, platform, latitude, longitude"
             if not dry_run:
                 write_partition(con, part_sql, settings, dataset, region, year)
             ds_state[key] = {"fingerprint": part_fp}

@@ -33,6 +33,8 @@ def test_ingest_publishes_partition_without_uid(tmp_path):
     out = pd.read_parquet(s.DATA_PROCESSED + "/detections/region=test_region/year=2024")
     assert "uid" not in out.columns
     assert len(out) == 1
+    keys = list(zip(out["date_local"], out["platform"], out["latitude"], out["longitude"]))
+    assert keys == sorted(keys)
 
 
 def test_sp_still_replaces_nrt_without_stored_uid(tmp_path):
@@ -116,3 +118,48 @@ def test_migration_refuses_nothing_on_empty_dataset(tmp_path):
     r = _run_migration(tmp_path, "--apply")
     assert r.returncode == 0, r.stderr
     assert "partitions to migrate: 0" in r.stdout
+
+
+def _load_script_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_c1_slim", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_corrupted_staged_partition_is_refused(tmp_path):
+    # the content check must reject a staged copy whose rows/values differ,
+    # and write_partition must then leave the published partition untouched
+    from firecal.duck import connect
+    from firecal.config import Settings
+    from firecal.dataset import write_partition, dataset_dir, DETECTIONS
+    s = _settings(tmp_path)
+    _make_fat_partition(s)
+    part = Path(s.DATA_PROCESSED) / "detections" / "region=test_region" / "year=2024"
+    before_bytes = (part / "data_0.parquet").read_bytes()
+
+    mod = _load_script_module()
+    con = connect(s, "pipeline")
+    glob = str(part / "*.parquet").replace("\\", "/")
+    slim = f"SELECT * EXCLUDE (uid) FROM read_parquet('{glob}')"
+    before_check = con.execute(
+        f"SELECT COUNT(*), SUM(hash(platform, latitude, longitude, acq_datetime_utc, frp, "
+        f"confidence_raw, type)) FROM ({slim})").fetchone()
+
+    # corrupted "rewrite": drop one row and flip another value
+    corrupt = f"SELECT * EXCLUDE (uid) FROM read_parquet('{glob}') WHERE latitude > 3.0"
+    with pytest.raises(ValueError, match="content check"):
+        write_partition(con, corrupt, s, DETECTIONS, "test_region", 2024,
+                        post_check=mod.make_post_check(before_check, "test_region", 2024))
+    assert (part / "data_0.parquet").read_bytes() == before_bytes
+
+
+def test_sorted_partition_after_migration(tmp_path):
+    s = _settings(tmp_path)
+    _make_fat_partition(s)
+    r = _run_migration(tmp_path, "--apply")
+    assert r.returncode == 0, r.stderr
+    out = pd.read_parquet(Path(s.DATA_PROCESSED) / "detections" / "region=test_region" / "year=2024")
+    keys = list(zip(out["date_local"], out["platform"], out["latitude"], out["longitude"]))
+    assert keys == sorted(keys)
