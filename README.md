@@ -1,4 +1,4 @@
-# Burning Calendar — burning activity, harmonized, 2003 to today
+# EmberTrace: Burning Activity Calendar — burning activity, harmonized, 2003 to today
 
 A web app that turns decades of MODIS and VIIRS fire-detection rows into one
 clean burning-activity calendar for **Southeast Asia**: when the season comes,

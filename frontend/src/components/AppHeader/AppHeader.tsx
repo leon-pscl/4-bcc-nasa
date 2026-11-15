@@ -23,7 +23,7 @@ export default function AppHeader() {
           {RAMP.map((c, i) => <span key={i} className={styles.bar} style={{ height: 8 + i * 4, background: c }} />)}
         </span>
         <div>
-          <div className={styles.title}>Burning Calendar</div>
+          <div className={styles.title}>EmberTrace: Burning Activity Calendar</div>
           <div className={styles.subtitle}>Harmonized MODIS + VIIRS fire hotspots, 2003 to today</div>
         </div>
       </div>
