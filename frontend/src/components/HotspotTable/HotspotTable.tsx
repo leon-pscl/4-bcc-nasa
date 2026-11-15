@@ -64,7 +64,7 @@ export default function HotspotTable() {
       <div className={styles.controls}>
         <label className={styles.check}><input type="checkbox" checked={showSensors} onChange={(e) => { setShowSensors(e.target.checked); setPage(1); }} /> Show sensor details</label>
       </div>
-      {isLoading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>No hotspots in this area and date range.</p> : (
+      {isLoading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>{data?.rows_note ?? 'No hotspots in this area and date range.'}</p> : (
         <>
           <div className={styles.tableWrap}>
             <table className={styles.table}>

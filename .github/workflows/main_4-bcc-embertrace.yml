@@ -12,7 +12,7 @@ on:
 
 env:
   # The processed data the site serves. Change this link when the v2 data zip is uploaded.
-  DATA_ZIP_URL: https://github.com/leon-pscl/4-bcc-nasa/releases/download/v1.0.0/processed_data.zip
+  DATA_ZIP_URL: https://github.com/leon-pscl/4-bcc-nasa/releases/download/v2-southeast-asia-outlook/processed_data_v2.zip
 
 concurrency:
   group: azure-deploy

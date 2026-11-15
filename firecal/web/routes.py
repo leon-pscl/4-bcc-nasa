@@ -470,6 +470,7 @@ def create_app(settings=None, dist_dir=None):
         if not dataset_dir(settings, DETECTIONS).exists():
             body = {"page": page, "page_size": page_size, "total": 0,
                     "rows": [], "data_version": dv,
+                    "rows_note": "Detections not available in this deployment.",
                     "query": query_block(area, start, end, cover)}
             return _json_response(body, etag=dv)
         from firecal.duck import connect
@@ -513,8 +514,17 @@ def create_app(settings=None, dist_dir=None):
                                r[7], r[8], r[9]]))
             for r in rows_df.itertuples(index=False, name=None)
         ]
+        rows_note = None
+        if total == 0:
+            try:
+                mn, mx = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS d").fetchone()
+                if mn is not None and (start < str(mn)[:10] or end > str(mx)[:10]):
+                    rows_note = f"Hotspots are available from {str(mn)[:10]} to {str(mx)[:10]} only."
+            except Exception:
+                pass
         body = {"page": page, "page_size": page_size, "total": total,
                 "rows": rows, "data_version": dv,
+                "rows_note": rows_note,
                 "query": query_block(area, start, end, cover)}
         return _json_response(body, etag=dv)
 

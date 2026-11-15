@@ -63,4 +63,14 @@ describe('ComparisonsPanel', () => {
     expect(screen.getByText('Top years (complete years only)')).toBeInTheDocument();
     expect(screen.getByText('90')).toBeInTheDocument();
   });
+
+  it('hides the forest sentence when forest_share is null', () => {
+    const cm = sum.current_month as { forest_share?: number | null; median_forest_share?: number | null };
+    cm.forest_share = null;
+    cm.median_forest_share = null;
+    render(<ComparisonsPanel />);
+    expect(screen.queryByText(/of these hotspots were in forest/)).not.toBeInTheDocument();
+    delete cm.forest_share;
+    delete cm.median_forest_share;
+  });
 });

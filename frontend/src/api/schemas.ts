@@ -71,6 +71,7 @@ export const HotspotsResponseSchema = z.object({
   page_size: z.number(),
   total: z.number(),
   rows: z.array(HotspotRowSchema),
+  rows_note: z.string().nullable().optional(),
   data_version: z.string(),
 });
 
