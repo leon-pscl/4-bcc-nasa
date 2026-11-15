@@ -2,7 +2,7 @@
 
 All the row-level work happens in SQL: DuckDB streams the CSV and writes Parquet
 partitions, so Python never holds the file. Timestamps, the local solar date and
-the uid are computed by the engine.
+the uid (dedup only, never stored) are computed by the engine.
 """
 
 import glob
@@ -14,6 +14,13 @@ from firecal.duck import connect as _connect
 
 MODIS_SATELLITES = {"Terra", "T", "Aqua", "A"}
 VIIRS_SATELLITES = {"N", "N20", "N21", "1", "2", "SNPP", "NOAA20", "NOAA21"}
+
+
+def _uid_expr(alias: str = "") -> str:
+    """Recomputable observation hash; stored nowhere, used only for dedup at ingest."""
+    p = f"{alias}." if alias else ""
+    return (f"md5({p}platform || '|' || CAST({p}latitude AS VARCHAR) || '|' || "
+            f"CAST({p}longitude AS VARCHAR) || '|' || CAST({p}acq_datetime_utc AS VARCHAR))")
 
 SQL = """
 WITH raw AS (
@@ -66,8 +73,7 @@ mapped AS (
     FROM timed
 )
 SELECT
-    md5(platform || '|' || CAST(latitude AS VARCHAR) || '|' ||
-        CAST(longitude AS VARCHAR) || '|' || CAST(acq_datetime_utc AS VARCHAR)) AS uid,
+    {uid_expr} AS uid,
     CAST(sensor AS VARCHAR) AS sensor,
     CAST(platform AS VARCHAR) AS platform,
     CASE WHEN RIGHT(TRIM(version), 3) = 'NRT' THEN 'NRT' ELSE 'SP' END AS processing,
@@ -129,15 +135,18 @@ def build_sql(con, path, sensor, region, bbox):
         brightness_expr, bright_t31_expr = "brightness", "bright_t31"
     else:
         brightness_expr, bright_t31_expr = "bright_ti4", "bright_ti5"
-    return (SQL.replace("{path}", path.replace("\\", "/").replace("'", "''"))
-               .replace("{source}", path.replace("\\", "/").replace("'", "''"))
-               .replace("{region}", region)
-               .replace("{type_expr}", type_expr)
-               .replace("{brightness_expr}", brightness_expr)
-               .replace("{bright_t31_expr}", bright_t31_expr)
-               .replace("{sensor}", sensor)
-               .replace("{w}", str(w)).replace("{s}", str(s))
-               .replace("{e}", str(e)).replace("{n}", str(n)))
+    # uid is computed for the QUALIFY dedup only; it is not stored in C1
+    sql = (SQL.replace("{path}", path.replace("\\", "/").replace("'", "''"))
+              .replace("{source}", path.replace("\\", "/").replace("'", "''"))
+              .replace("{region}", region)
+              .replace("{uid_expr}", _uid_expr())
+              .replace("{type_expr}", type_expr)
+              .replace("{brightness_expr}", brightness_expr)
+              .replace("{bright_t31_expr}", bright_t31_expr)
+              .replace("{sensor}", sensor)
+              .replace("{w}", str(w)).replace("{s}", str(s))
+              .replace("{e}", str(e)).replace("{n}", str(n)))
+    return f"SELECT * EXCLUDE (uid) FROM ({sql})"
 
 
 def expand(patterns):
@@ -175,7 +184,7 @@ def read_firms_csv(path):
         out = out.drop(columns=["region", "year"])
         for col in ("sensor", "platform", "processing", "daynight",
                     "confidence_raw", "confidence_class", "version",
-                    "source_file", "uid"):
+                    "source_file"):
             out[col] = out[col].astype("string")
         out["type"] = out["type"].astype("Int8")
         out["acq_datetime_utc"] = pd.to_datetime(out["acq_datetime_utc"])
@@ -185,13 +194,12 @@ def read_firms_csv(path):
             out[col] = out[col].astype("float64")
     else:
         import pandas as pd
-        out = pd.DataFrame(columns=["uid", "sensor", "platform", "processing",
+        out = pd.DataFrame(columns=["sensor", "platform", "processing",
                                     "latitude", "longitude", "acq_datetime_utc",
                                     "date_local", "daynight", "confidence_raw",
                                     "confidence_class", "frp", "scan", "track",
                                     "brightness", "bright_t31", "type", "version",
                                     "source_file"])
-        out["uid"] = out["uid"].astype("string")
         out["sensor"] = out["sensor"].astype("string")
         out["platform"] = out["platform"].astype("string")
         out["processing"] = out["processing"].astype("string")
@@ -306,13 +314,13 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
             if not parts:
                 continue
             union = "read_parquet([" + ", ".join(f"'{p}'" for p in parts) + "])"
-            # dedup by uid: new rows win; existing rows whose uid already appears in
+            # dedup by recomputed uid: new rows win; existing rows whose uid already appears in
             # the new files are dropped (SP-over-NRT for the same observation). Using
             # an anti-join avoids sorting the whole published partition, which OOMs
             # on large years.
             new_parts = [p for p in parts if p in new_parts_set]
             old_parts = [p for p in parts if p not in new_parts_set]
-            cols = ("uid, sensor, platform, processing, latitude, longitude, acq_datetime_utc, "
+            cols = ("sensor, platform, processing, latitude, longitude, acq_datetime_utc, "
                     "date_local, daynight, confidence_raw, confidence_class, frp, scan, track, "
                     "brightness, bright_t31, type, version, source_file, region, year")
             if new_parts and old_parts:
@@ -322,7 +330,7 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
                 SELECT {cols} FROM {new_union}
                 UNION ALL
                 SELECT {cols} FROM {old_union} o
-                WHERE o.uid NOT IN (SELECT uid FROM {new_union})
+                WHERE {_uid_expr('o')} NOT IN (SELECT {_uid_expr()} FROM {new_union})
                 """
             else:
                 part_sql = f"SELECT {cols} FROM {union}"

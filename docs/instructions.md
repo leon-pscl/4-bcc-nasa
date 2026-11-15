@@ -545,7 +545,6 @@ downloaded (or extracted from FIRMS's yearly archive), written atomically.
 
 | column | type | notes |
 |---|---|---|
-| `uid` | string | hash of platform + lat + lon + UTC datetime; unique |
 | `sensor` | string | `MODIS` or `VIIRS` |
 | `platform` | string | `Terra`, `Aqua`, `SNPP`, `NOAA20`, `NOAA21` |
 | `processing` | string | `SP` (standard) or `NRT` (near real time), from the `version` suffix |
@@ -561,6 +560,10 @@ downloaded (or extracted from FIRMS's yearly archive), written atomically.
 | `type` | Int8 (nullable) | null when the source has no `type` column |
 | `version` | string | |
 | `source_file` | string | |
+
+`uid` (md5 of platform + lat + lon + UTC datetime) is **not stored**; it is recomputed
+inline at ingest for de-duplication only (D22). Migration for partitions written before
+this change: `python scripts/migrate_c1_slim.py` (dry run), `--apply` to rewrite.
 
 Also written: `coverage.json`, one entry per region: `{name, label, bbox:[W,S,E,N],
 countries, start, end, platforms, latest_date, synthetic}`. Coverage is the **requested**
@@ -940,7 +943,7 @@ table.
 - `store.py`: `merge_into_store(new_df, store_path) -> DataFrame`
   - For each (platform, UTC date) that has any `SP` rows, drop that day's `NRT` rows. Standard
     data replaces NRT about 5 months later.
-  - Remove duplicates by `uid`. Validate, then write Parquet.
+  - Remove duplicates by `uid` (recomputed inline; not stored). Validate, then write Parquet.
   - Update `coverage.json`.
 - `cli.py`:
   - `python -m firecal.ingest --region bolivia_east` ingests every manifest entry (C0) whose

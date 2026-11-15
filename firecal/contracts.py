@@ -6,9 +6,9 @@ from typing import List
 import pandas as pd
 
 
-# C1: detections
+# C1: detections (uid is derived at ingest for dedup only, never stored)
 DETECTIONS_COLUMNS: List[str] = [
-    "uid", "sensor", "platform", "processing", "latitude", "longitude",
+    "sensor", "platform", "processing", "latitude", "longitude",
     "acq_datetime_utc", "date_local", "daynight", "confidence_raw",
     "confidence_class", "frp", "scan", "track", "brightness", "bright_t31",
     "type", "version", "source_file",
@@ -88,7 +88,7 @@ def _check_dtypes(df: pd.DataFrame, expected: dict, name: str) -> None:
 
 
 DETECTIONS_DTYPES = {
-    "uid": "string", "sensor": "string", "platform": "string",
+    "sensor": "string", "platform": "string",
     "processing": "string", "latitude": "float64", "longitude": "float64",
     "acq_datetime_utc": "datetime64", "date_local": "date",
     "daynight": "string", "confidence_raw": "string",

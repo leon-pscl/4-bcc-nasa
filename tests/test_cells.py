@@ -44,10 +44,6 @@ def test_filters_drop_low_and_type():
     settings.CONFIDENCE_KEEP = ("nominal", "high")
     settings.KEEP_TYPES = (0,)
     det = _sample_detections()
-    # make a low-confidence row and a type=1 row
-    low = det.iloc[[0]].copy()
-    low["confidence_class"] = "low"
-    low["uid"] = low["uid"].astype(str) + "_low"
     cd = build_celldays(det, settings)
     # NRT rows (missing type) should be present
     assert len(cd) > 0

@@ -66,7 +66,6 @@ def env(tmp_path):
     """)
     con.execute(f"""
         COPY (SELECT 'test_region' AS region,
-                     'uid' || ROW_NUMBER() OVER () AS uid,
                      CAST(d.date_local AS DATE) AS date_local, CAST(d.date_local AS TIMESTAMP) AS acq_datetime_utc,
                      -4.975 AS latitude, -61.975 AS longitude, 'nominal' AS confidence_class,
                      10.0 AS frp, 'D' AS daynight,

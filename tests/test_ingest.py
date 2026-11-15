@@ -8,7 +8,7 @@ def test_header_only_returns_empty(tmp_path):
     p.write_text("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight\n")
     df = read_firms_csv(str(p))
     assert len(df) == 0
-    assert "uid" in df.columns
+    assert "uid" not in df.columns
 
 
 def test_unknown_satellite_raises(tmp_path):

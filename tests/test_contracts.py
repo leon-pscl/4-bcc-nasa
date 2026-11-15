@@ -5,7 +5,6 @@ from firecal.contracts import validate_detections, validate_harmonized
 
 def _good_detections():
     return pd.DataFrame({
-        "uid": pd.array(["a"], dtype="string"),
         "sensor": pd.array(["MODIS"], dtype="string"),
         "platform": pd.array(["Aqua"], dtype="string"),
         "processing": pd.array(["NRT"], dtype="string"),
@@ -32,7 +31,7 @@ def test_good_detections_passes():
 
 
 def test_missing_column_fails():
-    df = _good_detections().drop(columns=["uid"])
+    df = _good_detections().drop(columns=["frp"])
     try:
         validate_detections(df)
     except ValueError as e:
