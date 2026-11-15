@@ -43,6 +43,9 @@ def _series_days_relation(con, settings, region):
 
 def hotspot_rows(area, start, end, settings, all_sensors=False, region=None, cover="all"):
     """Yield DataFrames of detection rows in the area/date range, in batches."""
+    from firecal.dataset import dataset_dir
+    if not dataset_dir(settings, "detections").exists():
+        return
     from firecal.duck import connect
     from firecal.analytics.cover import cover_exists_latlon
 
