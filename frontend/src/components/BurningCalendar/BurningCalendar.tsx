@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useCalendar, useSummary, useQueryParams } from '../../api/hooks';
 import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, countBins, binLabels } from '../../lib/colors';
 import { formatNumber, formatSignedPct, formatDate, formatLat, formatLon } from '../../lib/format';
@@ -9,7 +9,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 export default function BurningCalendar() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch } = useReadyAppState();
   const { params, valid, coverage } = useQueryParams(state);
   const { data, isLoading, error } = useCalendar(params);
   const { data: summary } = useSummary(params);
@@ -70,13 +70,13 @@ export default function BurningCalendar() {
     const m = MONTH_FULL[monthIdx];
     if (value === null) return `${m} ${year}: outside range`;
     const count = `${formatNumber(value)} hotspots`;
-    if (isPartial && data.partial) {
+    if (isPartial && data?.partial) {
       if (summary?.current_month && summary.current_month.pct_vs_median != null) {
         const p = summary.current_month.pct_vs_median;
         const cmp = p === 0 ? 'at the median' : `${pctMag(p)} ${p > 0 ? 'above' : 'below'} the median`;
-        return `${m} ${year}, days 1 to ${data.partial.through_day} so far: ${formatNumber(value)} hotspots, ${cmp} for the same days`;
+        return `${m} ${year}, days 1 to ${data?.partial?.through_day ?? 0} so far: ${formatNumber(value)} hotspots, ${cmp} for the same days`;
       }
-      return `${m} ${year}, days 1 to ${data.partial.through_day} so far: ${formatNumber(value)} hotspots, no median to compare with`;
+      return `${m} ${year}, days 1 to ${data?.partial?.through_day ?? 0} so far: ${formatNumber(value)} hotspots, no median to compare with`;
     }
     if (pct === null) return `${m} ${year}: ${count}, no median to compare with`;
     if (pct === 0) return `${m} ${year}: ${count}, at the median`;

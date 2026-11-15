@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useQueryParams } from '../../api/hooks';
 import { buildAreaParams } from '../../api/params';
 import { formatDate } from '../../lib/format';
@@ -11,7 +11,7 @@ function isMockMode() {
 }
 
 export default function Downloads() {
-  const { state } = useAppState();
+  const { state } = useReadyAppState();
   const { params, valid, coverage } = useQueryParams(state);
   const [allSensors, setAllSensors] = useState(false);
   const mock = isMockMode();
@@ -62,3 +62,4 @@ export default function Downloads() {
     </section>
   );
 }
+

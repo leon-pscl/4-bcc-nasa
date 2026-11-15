@@ -13,10 +13,12 @@ describe('client', () => {
       statusText: 'Bad Request',
       json: () => Promise.resolve({ error: 'bad', field: 'start' }),
     }));
-    const err = await apiFetch('calendar', '/api/calendar', schema).catch((e) => e as ApiError);
+    const err = await apiFetch('calendar', '/api/calendar', schema).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(400);
-    expect(err.field).toBe('start');
+    if (err instanceof ApiError) {
+      expect(err.status).toBe(400);
+      expect(err.field).toBe('start');
+    }
   });
   it('mock mode reads /mock/api_<name>.json', async () => {
     const prev = window.location.search;

@@ -16,6 +16,7 @@ const coverage = { regions: [
 
 vi.mock('../../state/useAppState', () => ({
   useAppState: () => ({ state, dispatch }),
+    useReadyAppState: () => ({ state, dispatch }),
 }));
 const outlookMock = {
   issued: '2026-10', latest_data_date: '2026-11-14', unit: 'Hotspots (harmonized)', grid_deg: 0.15, threshold: 1,

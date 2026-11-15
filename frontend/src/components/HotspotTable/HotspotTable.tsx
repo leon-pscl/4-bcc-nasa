@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useQueryParams, useHotspots } from '../../api/hooks';
 import { buildAreaParams } from '../../api/params';
 import styles from './HotspotTable.module.css';
@@ -18,7 +18,7 @@ function clipRange(focus: string, start: string, end: string) {
 }
 
 export default function HotspotTable() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch } = useReadyAppState();
   const { valid } = useQueryParams(state);
   const [page, setPage] = useState(1);
   const [showSensors, setShowSensors] = useState(false);
@@ -109,3 +109,4 @@ export default function HotspotTable() {
     </section>
   );
 }
+

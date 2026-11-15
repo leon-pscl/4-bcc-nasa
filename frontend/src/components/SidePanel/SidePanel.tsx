@@ -1,5 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import ComparisonsPanel from '../ComparisonsPanel/ComparisonsPanel';
 import OutlookPanel from '../OutlookPanel/OutlookPanel';
 import MethodsPanel from '../MethodsPanel/MethodsPanel';
@@ -12,7 +12,7 @@ const TABS = [
 ] as const;
 
 export default function SidePanel() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch } = useReadyAppState();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
@@ -56,3 +56,4 @@ export default function SidePanel() {
     </section>
   );
 }
+

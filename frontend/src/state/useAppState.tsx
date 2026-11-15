@@ -82,3 +82,9 @@ export function useAppState() {
   if (!ctx) throw new Error('useAppState must be used within AppStateProvider');
   return ctx;
 }
+
+export function useReadyAppState() {
+  const ctx = useAppState();
+  if (!ctx.state) throw new Error('AppState not ready');
+  return { state: ctx.state, dispatch: ctx.dispatch };
+}

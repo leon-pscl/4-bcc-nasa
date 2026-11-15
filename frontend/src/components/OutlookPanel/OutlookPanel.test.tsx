@@ -40,7 +40,8 @@ const outlook = {
   data_version: 'dv-mc-dv-o',
 };
 
-vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }) }));
+vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }),
+    useReadyAppState: () => ({ state, dispatch }) }));
 vi.mock('../../api/hooks', () => ({
   useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-14', valid: true, coverage: { regions: [{ name: 'southeast_asia', label: 'Southeast Asia', bbox: [92.0, -11.0, 141.0, 28.5], countries: [], start: '2003-01-01', end: '2026-11-14', platforms: [], latest_date: '2026-11-14', synthetic: false }], starter_areas: [], data_version: 'dv' } }),
   useOutlook: () => ({ data: outlook, isLoading: false, isError: false }),
@@ -119,3 +120,4 @@ describe('OutlookPanel', () => {
     expect(screen.getByText(/Sep, Aug, Oct/)).toBeInTheDocument();
   });
 });
+

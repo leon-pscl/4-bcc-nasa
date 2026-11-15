@@ -1,4 +1,4 @@
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useCoverage, useMethods, useQueryParams, useSeries } from '../../api/hooks';
 import { insideRegion } from '../../lib/geo';
 import styles from './MethodsPanel.module.css';
@@ -7,7 +7,7 @@ function fmt(v: number, digits = 3) { return v.toFixed(digits); }
 function fmtPct(v: number) { return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`; }
 
 export default function MethodsPanel() {
-  const { state } = useAppState();
+  const { state } = useReadyAppState();
   const { params } = useQueryParams(state);
   const { data: coverage } = useCoverage();
   const { data: series } = useSeries(params);
@@ -84,3 +84,4 @@ export default function MethodsPanel() {
     </div>
   );
 }
+

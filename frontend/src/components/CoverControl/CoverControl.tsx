@@ -1,4 +1,4 @@
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import type { Cover } from '../../state/urlState';
 import styles from './CoverControl.module.css';
 
@@ -10,7 +10,7 @@ export const OPTIONS: { id: Cover; label: string }[] = [
 ];
 
 export default function CoverControl() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch } = useReadyAppState();
   return (
     <div className={styles.wrap}>
       <span className={styles.label}>Fire type</span>
@@ -22,3 +22,4 @@ export default function CoverControl() {
     </div>
   );
 }
+
