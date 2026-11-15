@@ -431,6 +431,15 @@ in one place.
 | `REFERENCE_PLATFORM` | `"SNPP"` | The satellite every other one is calibrated to. Aqua MODIS is calibrated to it now; NOAA-20/21 can be added later without changing C4 (decision D9) |
 | `API_CACHE_MB` | `32` | Size of the server-side response cache (Stage 5) in MB. Entries are keyed by data version, so a pipeline run makes them stale automatically |
 | `FIRECAL_TODAY` | *(unset)* | **Test-only** clock override for `/health`, `YYYY-MM-DD`. When set, `/health` computes `age_days` from it instead of the server clock, so the staleness check can be exercised deterministically. Unset in normal runs |
+| `OUTLOOK_GRID_DEG` | `0.15` | 3 × `GRID_DEG`; must be a whole multiple of it (startup refuses anything else). The 15 km outlook grid, D34 |
+| `MASK_NONBURNABLE_CLASSES` | `(15, 16, 17, 255)` | Ice, barren, water and fill (plus the raster's nodata) are not burnable, D34 |
+| `MASK_MIN_BURNABLE_PCT` | `5.0` | Below this share of burnable pixels in every year, the cell is dropped from the outlook, D34 |
+| `OUTLOOK_FIRE_THRESHOLD` | `1` | The event behind p_fire is `value >= T` (a harmonized cell-month with at least 1 fire), D36 |
+| `OUTLOOK_LEADS` | `3` | Months ahead in the outlook |
+| `OUTLOOK_CLIM_SHRINK_M` | `3` | Years of neighbourhood weight in the p_fire shrinkage, D36 |
+| `OUTLOOK_NBR` | `2` | Neighbourhood radius in cells (5×5, kept cells only), D36 |
+| `OUTLOOK_TEST_YEARS` | `(2015, 2025)` | Backtest years (C16) |
+| `OUTLOOK_PFIRE_START` | `2013` | p_fire uses complete VIIRS years only (from 2013); means/medians use the full record from 2003, D36 |
 | UI unit label | "Hotspots (harmonized)" | The Methods tab explains the unit: one fire cell-day in VIIRS-equivalent terms |
 
 Paths (`DATA_RAW`, `DATA_PROCESSED`) and `FIRMS_MAP_KEY` come from environment variables, with
@@ -788,6 +797,21 @@ cover_class, forest_pct, crop_pct, other_veg_pct, land_pixels}`. Percentages are
 the MCD12Q1 Statistics CSV counts confident classified land. `cover_class` is the majority land
 group. Only cells in loaded regions are stored; partitioned by `region`/`year` Hive-style; rebuilt
 by `build_cell_cover` (rasterio over LC_Type1 + matching QC files; rasterio is a dev dependency).
+
+### C10–C16 `cell_surface`, `grid_cells`, `monthly_cells`, `climatology`, `outlook`, `outlook_<region>.json`
+
+The 15 km outlook grid (`g_idx = floor(cell_idx / 3)`, exactly 3×3 of the 0.05° cells, D34):
+C10 `cell_surface` (per fine cell: `total_px`, `water_pct`, `barren_pct`, `snow_ice_pct` from the
+2024 map, `burnable_pct_max`/`burnable_year_max` over 2002-2024, every pixel counts);
+C11 `grid_cells` (86,328 cells for southeast_asia: geometry, pixel-weighted percentages,
+`forest_pct`/`crop_pct` from C9 display-only, `keep`, `mask_reason` — wetlands stay burnable);
+C12 `monthly_cells` (per kept cell and month with value > 0; `value_forest`/`value_farmland`/`value_other`
+via C9 with the usual year rule; `monthly_cells.meta.json` carries grid, mask, T, the VIIRS-years rule,
+`latest_date`, `partial_month`, per-year C4 fingerprints and kept/masked totals);
+C13 `climatology` (kept cells × 12 months, baseline = complete years before the target year,
+2003 on; p_fire from VIIRS years 2013 on, shrunk toward the 5×5 kept neighbourhood, m = 3; D36);
+C14 `outlook` (issued monthly; `model = 'climatology'` tonight); C16 `validation/outlook_<region>.json`
+(backtest-lite, test years 2015-2025; D36). Build with `python -m firecal.outlook build-grid | build-monthly | issue | backtest --region <name>`.
 
 ---
 
