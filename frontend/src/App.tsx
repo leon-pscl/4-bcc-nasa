@@ -7,13 +7,17 @@ import HotspotTable from './components/HotspotTable/HotspotTable';
 import Downloads from './components/Downloads/Downloads';
 import CoverControl from './components/CoverControl/CoverControl';
 import { useAppState } from './state/useAppState';
+import { useIsFetching } from '@tanstack/react-query';
 import './index.css';
 
 export default function App() {
   const { state } = useAppState();
+  const isFetching = useIsFetching();
   if (!state) return null;
   return (
     <main style={{ maxWidth: 1440, margin: '0 auto', padding: '24px 32px', background: 'var(--paper)' }}>
+      {isFetching > 0 ? <div role="status" aria-live="polite" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 3, background: 'var(--ink)', zIndex: 9999 }} /> : null}
+      <div className="visually-hidden" aria-live="polite">{isFetching > 0 ? 'Loading results for this area…' : ''}</div>
       <AppHeader />
       <SyntheticBanner />
       <div id="live-region" aria-live="polite" className="visually-hidden" />

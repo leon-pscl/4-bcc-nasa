@@ -30,6 +30,7 @@ export default function AppHeader() {
       <div className={styles.meta}>
         <span>{through ? `Data through ${formatDate(through)}` : null}</span>
         <button className={styles.copy} onClick={copy}>Copy link to this view</button>
+        <a className={styles.copy} href="https://github.com/leon-pscl/4-bcc-nasa" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub">GitHub</a>
       </div>
     </header>
   );
