@@ -37,8 +37,8 @@ export const SummaryResponseSchema = z.object({
   current_month: z.object({
     year: z.number(), month: z.number(), through_day: z.number(), value: z.number(),
     median_same_span: z.number().nullable(), pct_vs_median: z.number().nullable(),
-    forest_share: z.number().optional(),
-    median_forest_share: z.number().optional(),
+    forest_share: z.number().nullable().optional(),
+    median_forest_share: z.number().nullable().optional(),
   }).nullable(),
   latest_data_date: z.string(),
   synthetic: z.boolean(),
