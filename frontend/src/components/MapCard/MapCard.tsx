@@ -276,7 +276,7 @@ export default function MapCard() {
     if (!sa) return;
     const [w, s, e, n] = sa.bbox;
     setMode('box'); setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
-    if (map) map.fitBounds([[s, w], [n, e]], { padding: [20, 20] });
+    if (map) map.fitBounds([[s, w], [n, e]], { padding: [20, 20], maxZoom: 10 });
   }
 
   function analyze() {
@@ -287,7 +287,7 @@ export default function MapCard() {
     dispatch({ type: 'patch', patch });
     if (patch.area) lastAnalyzeKey.current = areaKey(patch.area);
     const target = mode === 'box' ? rectBounds : circleBounds;
-    if (map && target) map.fitBounds(target, { padding: [20, 20] });
+    if (map && target) map.fitBounds(target, { padding: [20, 20], maxZoom: 10 });
   }
 
   const mapBins = useMemo(() => {
@@ -327,8 +327,13 @@ export default function MapCard() {
             ? <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             : <TileLayer attribution="Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
           {coverage?.regions.map((r) => (
-            <Rectangle key={r.name} bounds={[[r.bbox[1], r.bbox[0]], [r.bbox[3], r.bbox[2]]]} pathOptions={{ color: '#6b6b6d', weight: 1, dashArray: '4 4', fill: false }}>
-              <Tooltip>{r.label}</Tooltip>
+            <Rectangle
+              key={r.name}
+              bounds={[[r.bbox[1], r.bbox[0]], [r.bbox[3], r.bbox[2]]]}
+              interactive={!drawing}
+              pathOptions={{ color: '#6b6b6d', weight: 1, dashArray: '4 4', fill: false }}
+            >
+              {!drawing && <Tooltip>{r.label}</Tooltip>}
             </Rectangle>
           ))}
           {!outlookOn && mapData?.cells.map((c, i) => {
@@ -337,8 +342,9 @@ export default function MapCard() {
             const color = countColor(c.value, mapBins);
             return (
               <Rectangle key={`${c.lat}-${c.lon}-${i}`} bounds={[[c.lat - half, c.lon - half], [c.lat + half, c.lon + half]]}
+                interactive={!drawing}
                 pathOptions={{ color, weight: 0.5, fillColor: color, fillOpacity: 0.75 }}>
-                <Popup>{`${formatNumber(c.value)} hotspots · ${formatLat(c.lat)}, ${formatLon(c.lon)}`}</Popup>
+                {!drawing && <Popup>{`${formatNumber(c.value)} hotspots · ${formatLat(c.lat)}, ${formatLon(c.lon)}`}</Popup>}
               </Rectangle>
             );
           })}
@@ -370,9 +376,19 @@ export default function MapCard() {
             <button type="button" className={styles.controlBtn} aria-label="Zoom out" onClick={() => map?.zoomOut()}>−</button>
           </div>
           <div className={styles.controlGroup}>
-            <button type="button" className={styles.controlBtn} aria-pressed={drawing} aria-label="Draw area" disabled={mode === 'point'} onClick={() => setDrawing((x) => !x)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"><rect x="4" y="4" width="16" height="16" rx="1" /></svg>
-            </button>
+            <div className={styles.drawWrapper}>
+              <button
+                type="button"
+                className={styles.controlBtn}
+                aria-pressed={drawing}
+                aria-label="Draw area"
+                disabled={mode === 'point'}
+                onClick={() => setDrawing((x) => !x)}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"><rect x="4" y="4" width="16" height="16" rx="1" /></svg>
+              </button>
+              {drawing && <div className={styles.hint}>Drag on the map · Esc to cancel</div>}
+            </div>
             <button type="button" className={styles.controlBtn} aria-label="Delete area" onClick={() => { setBoxDraft(emptyBox); setPointDraft(emptyPoint); }}>✕</button>
           </div>
         </div>
@@ -387,7 +403,6 @@ export default function MapCard() {
             {coverage?.starter_areas.map((sa) => <option key={sa.name} value={sa.name}>{sa.label}</option>)}
           </select>
         </div>
-        {drawing && <div className={styles.hint}>Drag on the map · Esc to cancel</div>}
       </div>
 
       <div className={styles.footer}>

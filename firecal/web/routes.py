@@ -33,12 +33,13 @@ def _app_version(settings):
 def _probe_harmonized(settings):
     """Open one harmonized partition (latest year, first file). (ok, detail)."""
     try:
-        import glob
+        from pathlib import Path
         from firecal.duck import connect
-        root = os.path.join(settings.DATA_PROCESSED, "harmonized_daily")
-        cand = glob.glob(os.path.join(root, "region=*", "year=*", "*.parquet"))
+        from firecal.dataset import processed_root
+        root = Path(processed_root(settings)) / "harmonized_daily"
+        cand = [str(p) for p in root.rglob("*.parquet")]
         if not cand:
-            return False, "no harmonized partitions found"
+            return False, f"no harmonized partitions found in {root}"
         def _y(p):
             try:
                 return int(os.path.basename(os.path.dirname(p)).split("=")[1])
@@ -46,7 +47,6 @@ def _probe_harmonized(settings):
                 return -1
         cand.sort(key=lambda p: (_y(p), p))
         pick = cand[-1]
-        rel = os.path.relpath(pick, settings.DATA_PROCESSED)
         con = connect(settings, "web")
         try:
             con.execute(f"SELECT COUNT(*) FROM read_parquet('{pick.replace(os.sep, '/')}')").fetchone()
@@ -70,6 +70,87 @@ def _cache_key(args, dv):
     return (tuple(sorted(args.items())), dv)
 
 
+_ensure_data_status = {}
+
+
+def _ensure_data(settings):
+    """Ensure harmonized partitions exist; auto-download/extract to /tmp if needed."""
+    global _ensure_data_status
+    try:
+        from pathlib import Path
+        import shutil
+        import urllib.request
+        import zipfile
+        from firecal.dataset import processed_root
+
+        # 1. First check: does current DATA_PROCESSED have harmonized partitions?
+        root = processed_root(settings)
+        cand = list(root.rglob("data_0.parquet"))
+        if cand:
+            _ensure_data_status = {"ok": True, "count": len(cand), "path": str(root)}
+            return True
+
+        # 2. Fallback for a read-only app folder: clean dedicated dir in /tmp.
+        target_dir = Path("/tmp/firecal_data") if os.name != "nt" else Path("data/processed")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        cand = list(target_dir.rglob("data_0.parquet"))
+        if not cand and settings.DATA_ZIP_URL:
+            # Download the release archive and extract into target_dir,
+            # normalizing any Windows backslashes in the entry names.
+            dl_path = Path("/tmp/official_processed_data.zip") if os.name != "nt" else Path("temp_data.zip")
+            req = urllib.request.Request(settings.DATA_ZIP_URL, headers={"User-Agent": "curl/7.68.0"})
+            with urllib.request.urlopen(req) as resp, open(dl_path, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            shutil.rmtree(str(target_dir), ignore_errors=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(dl_path, "r") as z:
+                for member in z.infolist():
+                    clean_name = member.filename.replace("\\", "/").strip("/")
+                    if not clean_name or ".." in clean_name.split("/"):
+                        continue
+                    target_path = target_dir / clean_name
+                    if member.is_dir() or member.filename.endswith("/") or member.filename.endswith("\\"):
+                        target_path.mkdir(parents=True, exist_ok=True)
+                    else:
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        with z.open(member) as source, open(target_path, "wb") as target:
+                            shutil.copyfileobj(source, target)
+
+        cand = list(target_dir.rglob("data_0.parquet"))
+
+        # 3. Find the directory containing harmonized_daily
+        if cand:
+            # Find the root that contains harmonized_daily
+            for p in cand:
+                parts = p.parts
+                if "harmonized_daily" in parts:
+                    idx = parts.index("harmonized_daily")
+                    resolved_data_dir = Path(*parts[:idx])
+                    settings.DATA_PROCESSED = str(resolved_data_dir)
+                    break
+            _ensure_data_status = {
+                "ok": True,
+                "count": len(cand),
+                "path": settings.DATA_PROCESSED,
+                "sample": str(cand[0])
+            }
+            return True
+        else:
+            all_found = [str(p) for p in target_dir.rglob("*")][:15]
+            _ensure_data_status = {
+                "ok": False,
+                "error": "0 parquet files found in target_dir",
+                "path": str(target_dir),
+                "contents": all_found
+            }
+            return False
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("ensure_data error: %s", exc)
+        _ensure_data_status = {"ok": False, "error": str(exc)}
+        return False
+
+
 def create_app(settings=None, dist_dir=None):
     _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if dist_dir is None:
@@ -77,6 +158,7 @@ def create_app(settings=None, dist_dir=None):
     if settings is None:
         from firecal.config import Settings
         settings = Settings.from_env()
+    _ensure_data(settings)
     from flask import Flask
     app = Flask(__name__)
     app.debug = os.environ.get("FLASK_DEBUG", "0") == "1"  # default off; never the network debugger
@@ -223,6 +305,14 @@ def create_app(settings=None, dist_dir=None):
         from flask import send_from_directory
         return send_from_directory(os.path.join(dist_dir, "assets"), p)
 
+    @app.route("/mock/<path:p>")
+    def mock(p):
+        from flask import send_from_directory
+        mock_dir = os.path.join(dist_dir, "mock")
+        if not os.path.exists(mock_dir):
+            mock_dir = os.path.join(_repo_root, "frontend", "public", "mock")
+        return send_from_directory(mock_dir, p)
+
     @app.route("/health")
     def health():
         dv = _app_version(settings)
@@ -242,11 +332,11 @@ def create_app(settings=None, dist_dir=None):
         ok, detail = _probe_harmonized(settings)
         if ok:
             status = "stale" if stale else "ok"
-            body = {"status": status, "data_version": dv, "regions": regions}
+            body = {"status": status, "data_version": dv, "regions": regions, "ensure_status": _ensure_data_status}
         else:
             status = "error"
             body = {"status": status, "data_version": dv, "regions": regions,
-                    "error": detail}
+                    "error": detail, "ensure_status": _ensure_data_status}
         return _json_response(body, etag=dv)
 
     # ---------- API ----------
@@ -335,14 +425,25 @@ def create_app(settings=None, dist_dir=None):
         import math
         month_raw = request.args.get("month")
         month = None
+        focus_year = None
         if month_raw is not None:
-            try:
-                month = int(month_raw)
-                if not (1 <= month <= 12):
-                    raise ValueError
-            except ValueError:
-                return _json_response({"error": "month must be an integer 1-12", "field": "month"}, status=400)
-        result = map_cells(area, start, end, settings, month=month, region=region, cover=cover)
+            if "-" in month_raw:
+                try:
+                    parts = month_raw.split("-")
+                    focus_year = int(parts[0])
+                    month = int(parts[1])
+                    if not (1 <= month <= 12):
+                        raise ValueError
+                except Exception:
+                    return _json_response({"error": "month must be an integer 1-12", "field": "month"}, status=400)
+            else:
+                try:
+                    month = int(month_raw)
+                    if not (1 <= month <= 12):
+                        raise ValueError
+                except ValueError:
+                    return _json_response({"error": "month must be an integer 1-12", "field": "month"}, status=400)
+        result = map_cells(area, start, end, settings, month=month, year=focus_year, region=region, cover=cover)
         resp = _json_response({**result, "data_version": dv,
                                "coverage_warning": coverage_warning,
                                "query": query_block(area, start, end, cover)}, etag=dv)
@@ -365,6 +466,12 @@ def create_app(settings=None, dist_dir=None):
         from firecal.analytics.cover import cover_exists_latlon
         from firecal.analytics.export import (_series_days_relation, _area_where,
                                               _source_filters)
+        from firecal.dataset import dataset_dir
+        if not dataset_dir(settings, DETECTIONS).exists():
+            body = {"page": page, "page_size": page_size, "total": 0,
+                    "rows": [], "data_version": dv,
+                    "query": query_block(area, start, end, cover)}
+            return _json_response(body, etag=dv)
         from firecal.duck import connect
         con = connect(settings, "web")
         try:

@@ -31,7 +31,13 @@ PIPELINE_VERSION = 5
 
 
 def processed_root(settings):
-    return Path(settings.DATA_PROCESSED)
+    p = Path(settings.DATA_PROCESSED)
+    if not p.is_absolute():
+        if not p.exists():
+            _repo_root = Path(__file__).resolve().parent.parent
+            if (_repo_root / p).exists():
+                return _repo_root / p
+    return p
 
 
 def acquire_writer_lock(settings):

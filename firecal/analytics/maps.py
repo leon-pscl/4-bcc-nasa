@@ -5,7 +5,7 @@ from firecal.dataset import read_dataset
 MAX_MAP_CELLS = 20_000
 
 
-def map_cells(area, start, end, settings, month=None, region=None, cover="all"):
+def map_cells(area, start, end, settings, month=None, year=None, region=None, cover="all"):
     from firecal.analytics.cover import cover_exists
     from firecal.duck import connect
 
@@ -14,7 +14,12 @@ def map_cells(area, start, end, settings, month=None, region=None, cover="all"):
     try:
         cell_filter = area.bbox_sql(area)
         cover_pred = cover_exists(settings, cover, "h")
-        month_filter = f"AND EXTRACT(month FROM date_local) = {int(month)}" if month else ""
+        if month and year:
+            month_filter = f"AND EXTRACT(year FROM date_local) = {int(year)} AND EXTRACT(month FROM date_local) = {int(month)}"
+        elif month:
+            month_filter = f"AND EXTRACT(month FROM date_local) = {int(month)}"
+        else:
+            month_filter = ""
         where = f"""
             date_local >= DATE '{start}' AND date_local <= DATE '{end}'
               AND ({cell_filter}) {month_filter} AND ({cover_pred})
