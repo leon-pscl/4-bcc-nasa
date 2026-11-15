@@ -1,6 +1,6 @@
-# Report: step 2 — outlook data (branch outlook/data), 2026-11-15 15:20
+﻿# Report: step 2 â€” outlook data (branch outlook/data), 2026-11-15 15:20
 Task: inbox/claude-2026-11-15-1350-outlook-override.md, step 2; spec inbox/task-fire-outlook.md
-Branch: outlook/data @ 3cff842 (1 commit). Merged into pascual when CI was green; CI on the merge run is reported in STATE.md.
+Branch: outlook/data @ 3cff842 (1 commit). Merged into pascual as 94cf7ce (outlook/data @ 3cff842, CI success on 132727816142). Post-merge builds on E:\datasets: build-grid (C10+C11, 122.1 s, same numbers), build-monthly (all years up to date), issue (climatology rebuilt, issued 2026-10, targets Nov 2026 - Jan 2027).
 
 ## What was built
 C10 cell_surface (per fine cell: total_px, water/barren/snow_ice pct from the 2024 map, burnable_pct_max + year over 2002-2024; every pixel counts, no QC filter; one pass over the 23 LC_Type1 granules) -> C11 grid_cells (86,328 cells; g_idx = floor(cell_idx/3), integer math with floor-division semantics identical to DuckDB FLOOR; CK test pins the centre-in-box helper, exact rational math at the edges) -> C12 monthly_cells (sum of C4 per kept cell-month, value > 0 only, cover split via C9 year rule = min(year-1, 2024)) -> C13 climatology (kept cells x 12 months; baseline = complete years before the target year, 2003 on; p_fire from VIIRS years 2013 on, shrunk toward the 5x5 kept neighbourhood incl. self, m = 3; mean/median/p25/p75 full record; rank_in_year) -> C14 outlook (issued monthly; model = "climatology"; issue = last complete month; 2026-11-14 -> issued 2026-10, targets Nov 2026 / Dec 2026 / Jan 2027) -> C16 backtest-lite (2015-2025, climatology from years before Y only).
@@ -19,7 +19,7 @@ The raster's nodata IS 255 (uint8, nodata = 255.0): open sea is 17 (81,233,010 p
 
 ## Cells by mask reason (all 86,328)
 kept 26,015 (30.1%) | water 60,313 (69.9%) | barren 0 | snow_ice 0.
-Masking drops 6,319.1 of 14,896,721.2 harmonized hotspots, 2003-2026 (0.042%) — well below the 1% stop threshold. 2026 alone: 1,792.3 of 585,314.9 (0.306%).
+Masking drops 6,319.1 of 14,896,721.2 harmonized hotspots, 2003-2026 (0.042%) â€” well below the 1% stop threshold. 2026 alone: 1,792.3 of 585,314.9 (0.306%).
 
 ## Top 20 masked cells by fire (whole record)
 (81, 625; 12.225N 93.825E; 458.0) (34, 768; 5.175N 115.275E; 180.8) (96, 804; 14.475N 120.675E; 142.0) (-56, 933; 8.325S 140.025E; 118.6) (-66, 832; 9.825S 124.875E; 109.3) (-54, 786; 8.025S 117.975E; 107.5) (-41, 702; 6.075S 105.375E; 96.0) (-64, 824; 9.525S 123.675E; 90.8) (90, 803; 13.575N 120.525E; 81.7) (-56, 781; 8.325S 117.225E; 77.3) (69, 722; 10.425N 108.375E; 76.7) (-52, 864; 7.725S 129.675E; 69.0) (-53, 763; 7.875S 114.525E; 65.7) (-69, 827; 10.275S 124.125E; 63.4) (33, 753; 5.025N 113.025E; 63.4) (24, 749; 3.675N 112.425E; 60.1) (-55, 823; 8.175S 123.525E; 55.5) (-64, 792; 9.525S 118.875E; 54.5) (-54, 839; 8.025S 125.925E; 52.0) (109, 643; 16.425N 96.525E; 50.4)
@@ -65,7 +65,7 @@ monthly_cells.meta.json records: grid_deg 0.15, fine_per_g 3, mask (nonburnable 
 Generated (map of kept vs masked cells with burnable-share colouring); see the file in the branch.
 
 ## Deviations / notes
-- Commit 3cff842 message has a wrong fine_cells sub-count ("85738/259/326/1" should be 263 with 6) — numbers in this report and in tests are correct.
+- Commit 3cff842 message has a wrong fine_cells sub-count ("85738/259/326/1" should be 263 with 6) â€” numbers in this report and in tests are correct.
 - The masked share of fire is 0.042%, not the "expected coastal flares well under 0.5%" claim exactly at 0.306% for 2026 alone (fly-in 2026 island/coastal hotspots), still far below the 1% stop.
 - C12 cover split: kept fine cells all have C9 rows (land); value_forest + value_farmland + value_other can sum to slightly less than value where C9 has no row.
 - Backtest peak memory not sampled; per-year queries are the same shapes as issue (~1 GB peak).
@@ -73,3 +73,4 @@ Generated (map of kept vs masked cells with burnable-share colouring); see the f
 ## Blocked / known limits
 - P6 (pipeline wiring of the outlook after merge) is intentionally not done tonight per the 13:50 message.
 - The GLM model and C15 stay out of tonight entirely.
+

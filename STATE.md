@@ -1,4 +1,4 @@
-# STATE — 2026-11-15 13:03 Asia/Manila
+# STATE — 2026-11-15 15:30 Asia/Manila
 
 | task | branch | last commit | CI (run, conclusion) | merged into pascual (hash) | tag | status | waiting on |
 |---|---|---|---|---|---|---|---|
@@ -10,6 +10,7 @@
 | fix/map-draw | fix/map-draw | 07ac80a | #90 success; #91 success; #92 success | 3e9e3c6 | — | done | nothing |
 | fix/area-key (E(a)) | fix/area-key | 221ae62 | #97 success | not merged | — | done (unmerged) | nothing — merge on request |
 | fix/c1-slim 3E (F) | fix/c1-slim | 93f3367 | #98 in progress | not merged | — | waiting | Claude go-ahead to run the migration on E:\datasets (runs right before grid-edge rebuild); confirm #98 green |
+| outlook/data (step 2) | outlook/data | 3cff842 | #132727816142 success | 94cf7ce | v1.0.2-southeast-asia (safety tag, pre-outlook) | done | nothing — post-merge builds on E: (build-grid, build-monthly, issue) done |
 
 ## Data on the PC
 
