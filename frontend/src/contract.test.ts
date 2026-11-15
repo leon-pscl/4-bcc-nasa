@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { z } from 'zod';
 import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
   HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema,
   OutlookResponseSchema, OutlookMapResponseSchema,
 } from './api/schemas';
 
-const mocks: [string, unknown][] = [
+const mocks: [string, z.ZodTypeAny][] = [
   ['api_calendar.json', CalendarResponseSchema],
   ['api_summary.json', SummaryResponseSchema],
   ['api_map.json', MapResponseSchema],

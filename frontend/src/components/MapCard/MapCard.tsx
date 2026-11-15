@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Rectangle, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLng, Map as LeafletMap } from 'leaflet';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useQueryParams, useMap as useMapData, useCalendar, useOutlook, useOutlookMap } from '../../api/hooks';
 import { buildAreaParams } from '../../api/params';
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges } from '../../lib/geo';
@@ -119,7 +119,7 @@ function DraftChip({ map, bounds, label, aboveLabel }: { map: LeafletMap | null;
 }
 
 export default function MapCard() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch } = useReadyAppState();
   const { params, coverage } = useQueryParams(state);
   const monthParam = state.focus ?? undefined;
   const { data: mapData } = useMapData(params, monthParam);

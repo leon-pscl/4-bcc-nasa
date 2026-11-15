@@ -9,7 +9,8 @@ import type { AppState } from '../../state/urlState';
 const dispatch = vi.fn();
 let state: Pick<AppState, 'tab'>;
 
-vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }) }));
+vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }),
+    useReadyAppState: () => ({ state, dispatch }) }));
 vi.mock('../ComparisonsPanel/ComparisonsPanel', () => ({ default: () => <div>Comparisons content</div> }));
 vi.mock('../OutlookPanel/OutlookPanel', () => ({ default: () => <div>Outlook content</div> }));
 
@@ -42,3 +43,4 @@ describe('SidePanel', () => {
     expect(dispatch).toHaveBeenLastCalledWith({ type: 'patch', patch: { tab: 'comparisons' } });
   });
 });
+

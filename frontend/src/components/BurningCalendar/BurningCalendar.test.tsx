@@ -29,7 +29,8 @@ const cal = {
 const sum = { total: 130.8, peak_month: null, peak_year: null, current_month: { year: 2026, month: 11, through_day: 12, value: 115, median_same_span: 82, pct_vs_median: 40 }, latest_data_date: '2026-11-12', synthetic: true, data_version: 'v1' };
 const cov = { regions: [{ name: 'southeast_asia', label: 'Southeast Asia', bbox: [92,-11,141,28.5], countries: [], start: '2003-01-01', end: '2026-11-12', platforms: ['Aqua'], latest_date: '2026-11-12', synthetic: true }], starter_areas: [{ name: 'central_kalimantan', label: 'Central Kalimantan', region: 'southeast_asia', bbox: [110.7,-3.6,115.9,0.8] }], data_version: 'v1' };
 
-vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }) }));
+vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }),
+    useReadyAppState: () => ({ state, dispatch }) }));
 vi.mock('../../api/hooks', () => ({
   useCalendar: () => ({ data: cal, isLoading: false, error: null }),
   useSummary: () => ({ data: sum }),

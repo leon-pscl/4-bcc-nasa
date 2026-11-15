@@ -9,3 +9,4 @@ describe('CoverControl', () => {
     OPTIONS.forEach((o) => expect(API_VALUES).toContain(o.id));
   });
 });
+

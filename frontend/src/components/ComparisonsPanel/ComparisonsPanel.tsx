@@ -4,7 +4,7 @@ import {
   type ChartOptions,
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import { useAppState } from '../../state/useAppState';
+import { useReadyAppState } from '../../state/useAppState';
 import { useCalendar, useSummary, useQueryParams, useSeries } from '../../api/hooks';
 import { formatNumber } from '../../lib/format';
 import type { AreaState } from '../../state/urlState';
@@ -30,7 +30,7 @@ function fileBase(state: { area: AreaState; start: string; end: string }, kind: 
 }
 
 export default function ComparisonsPanel() {
-  const { state } = useAppState();
+  const { state } = useReadyAppState();
   const { params, valid, coverage } = useQueryParams(state);
   const { data: summary } = useSummary(params);
   const { data: calendar } = useCalendar(params);
@@ -185,3 +185,4 @@ export default function ComparisonsPanel() {
     </>
   );
 }
+

@@ -10,7 +10,8 @@ const state = {
   tab: 'comparisons' as const, cover: 'all' as const, layer: 'history' as const, lead: 1 as const,
 };
 
-vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }) }));
+vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }),
+    useReadyAppState: () => ({ state, dispatch }) }));
 vi.mock('../../api/hooks', () => ({
   useQueryParams: () => ({
     params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-14&cover=all',
@@ -34,3 +35,4 @@ describe('Downloads', () => {
     expect(screen.getByText(/One row per cell and month with fire/)).toBeInTheDocument();
   });
 });
+
