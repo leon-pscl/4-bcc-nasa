@@ -278,7 +278,9 @@ def create_app(settings=None, dist_dir=None):
             cr = area_cell_range(area)
         except Exception:
             pass
-        cache_key = (key, cr, start, end, cover, etag)
+        extra = tuple(sorted((k, v) for k, v in args.items()
+                            if k not in ("bbox", "point", "radius_km", "start", "end", "cover")))
+        cache_key = (key, cr, start, end, cover, extra, etag)
         hit = cache_get(cache_key)
         if hit is not None:
             body, ct, status = hit
@@ -306,7 +308,9 @@ def create_app(settings=None, dist_dir=None):
                 cr = area_cell_range(area)
             except Exception:
                 pass
-            cache_key = (request.endpoint, cr, start, end, cover, etag)
+            extra = tuple(sorted((k, v) for k, v in args.items()
+                                if k not in ("bbox", "point", "radius_km", "start", "end", "cover")))
+            cache_key = (request.endpoint, cr, start, end, cover, extra, etag)
         cache_put(cache_key, (resp.get_data(), resp.headers.get("Content-Type", "application/json"), resp.status_code))
         return resp
 
