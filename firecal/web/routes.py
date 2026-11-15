@@ -19,7 +19,7 @@ from firecal.analytics.summary import summary as _summary
 from firecal.config import Settings
 from firecal.dataset import DETECTIONS, HARMONIZED, read_dataset
 from firecal.web.images import render_calendar_png
-from firecal.web.params import ParamError, CoverageError, load_coverage, parse_query
+from firecal.web.params import ParamError, CoverageError, load_coverage, parse_query, parse_area
 
 
 def _app_version(settings):
@@ -129,7 +129,8 @@ def create_app(settings=None, dist_dir=None):
 
     def coverage_response():
         cov = load_coverage(settings)
-        dv = _app_version(settings)
+        from firecal.outlook.api import outlook_version
+        dv = f"{_app_version(settings)}-{outlook_version(settings)}"
         regions = cov or []
         # enrich with label/countries from regions.json (C6 contract)
         regions_meta = {}
@@ -161,6 +162,22 @@ def create_app(settings=None, dist_dir=None):
             match = next((r for r in regions if r.get("name") == s["region"]), None)
             if match and match.get("latest_date"):
                 s["latest_date"] = match["latest_date"]
+        # outlook issue per region (if the outlook tables exist)
+        from firecal.outlook.api import issued_targets
+        from firecal.duck import connect
+        for r in regions:
+            name = r.get("name")
+            try:
+                con = connect(settings, "web")
+                try:
+                    issued, targets = issued_targets(con, settings, name)
+                finally:
+                    con.close()
+            except Exception:
+                issued, targets = None, []
+            if issued:
+                r["outlook"] = {"issued": issued,
+                                "targets": [f"{y}-{m:02d}" for _, y, m in targets]}
         return _json_response(
             {"regions": regions, "starter_areas": starter, "data_version": dv},
             etag=dv)
@@ -485,14 +502,270 @@ def create_app(settings=None, dist_dir=None):
             "k_max": float(max(ks)),
             "count_per_level": {str(k): int(v) for k, v in level_counts.items()},
         }
+        from firecal.outlook.api import mask_stats, skill_numbers, issued_targets
+        from firecal.duck import connect as _connect2
+        outlook_info = None
+        if os.path.exists(os.path.join(settings.DATA_PROCESSED, "monthly_cells.meta.json")):
+            con2 = _connect2(settings, "web")
+            try:
+                issued, targets = issued_targets(con2, settings, region)
+            finally:
+                con2.close()
+            ms = mask_stats(settings, region)
+            grid = {"cells": ms["cells"],
+                    "masked_share_of_fire_pct": ms["masked_share_of_fire_pct"]}
+            outlook_info = {
+                "grid_deg": settings.OUTLOOK_GRID_DEG,
+                "mask": {"nonburnable_classes": list(settings.MASK_NONBURNABLE_CLASSES),
+                          "min_burnable_pct": settings.MASK_MIN_BURNABLE_PCT},
+                "threshold": settings.OUTLOOK_FIRE_THRESHOLD,
+                "p_fire_rule": ("VIIRS years only (complete years >= 2013); "
+                                "means and medians use the full record from 2003"),
+                "model": "climatology",
+                "issued": issued,
+                "targets": [f"{y}-{m:02d}" for _, y, m in targets],
+                "skill": skill_numbers(settings, region),
+            }
+        else:
+            grid = None
         body = {"region": region, "calibration": calibration,
                 "validation": validation, "data_version": dv}
+        if grid is not None:
+            body["grid"] = grid
+        if outlook_info is not None:
+            body["outlook"] = outlook_info
         return _json_response(body, etag=dv)
+
+    def _outlook_query():
+        cover = request.args.get("cover", "all")
+        if cover != "all":
+            raise ParamError("the outlook endpoints only take cover=all", "cover")
+        area, region, warning = parse_area(request.args.to_dict(), settings)
+        return area, region, warning
+
+    def _outlook_dv():
+        from firecal.outlook.api import outlook_version
+        return outlook_version(settings)
+
+    @app.route("/api/outlook")
+    def outlook():
+        cached = full_area("outlook")
+        if cached is not None:
+            return cached
+        area, region, warning = _outlook_query()
+        dv = _outlook_dv()
+        from firecal.outlook.api import (area_cells, area_month_totals, issued_targets,
+                                          outlook_lead_totals, area_single_month_total,
+                                          top_cells, season_block, month_p25_p75,
+                                          month_mean_median, skill_numbers)
+        from firecal.outlook.monthly import _latest_date, _partial_month
+        from firecal.outlook.climatology import complete_baseline_last, SERIES_START
+        from firecal.duck import connect
+        latest = _latest_date(settings, region)
+        cells = area_cells(settings, region, area)
+        con = connect(settings, "web")
+        try:
+            issued, targets = issued_targets(con, settings, region)
+            if not issued:
+                return _json_response({"error": "no outlook issued for this region yet",
+                                       "field": "outlook"}, status=422)
+            base_last = complete_baseline_last(settings, latest)
+            totals = area_month_totals(con, settings, region, cells, SERIES_START, base_last)
+            lead_totals = {int(lead): (int(ty), int(tm), float(exp or 0.0), int(likely or 0))
+                           for lead, ty, tm, exp, likely in
+                           outlook_lead_totals(con, settings, region, cells, issued)}
+            partial = _partial_month(latest)
+            months = []
+            for lead, ty, tm in [(t[0], t[1], t[2]) for t in targets]:
+                lt = lead_totals.get(lead)
+                expected = lt[2] if lt else 0.0
+                likely = lt[3] if lt else 0
+                rng = month_p25_p75(totals, tm)
+                nmean, nmedian = month_mean_median(totals, tm)
+                so_far = None
+                if partial and partial["year"] == ty and partial["month"] == tm:
+                    v = area_single_month_total(con, settings, region, cells, ty, tm)
+                    so_far = {"through_day": partial["through_day"], "value": v}
+                months.append({"year": ty, "month": tm, "lead": lead, "model": "climatology",
+                               "expected": round(expected, 1),
+                               "typical_range": rng,
+                               "normal_mean": nmean, "normal_median": nmedian,
+                               "observed_so_far": so_far,
+                               "cells_likely": likely})
+            tops = top_cells(con, settings, region, cells, issued, per_lead=10)
+        finally:
+            con.close()
+        skill = skill_numbers(settings, region)
+        query = {"area_km2": round(area.area_km2(), 1)}
+        if area.radius_km is not None:
+            query["point"] = [area.lat, area.lon]
+            query["radius_km"] = area.radius_km
+        else:
+            query["bbox"] = [area.w, area.s, area.e, area.n]
+        body = {"query": query,
+                "issued": issued, "latest_data_date": str(latest),
+                "unit": "Hotspots (harmonized)", "grid_deg": settings.OUTLOOK_GRID_DEG,
+                "threshold": settings.OUTLOOK_FIRE_THRESHOLD,
+                "months": months,
+                "top_cells": tops,
+                "season": season_block(totals),
+                "skill": skill,
+                "data_version": dv, "synthetic": False,
+                "coverage_warning": warning}
+        resp = _json_response(body, etag=dv)
+        return store(resp)
+
+    @app.route("/api/outlook/map")
+    def outlook_map():
+        cached = full_area("outlook-map")
+        if cached is not None:
+            return cached
+        area, region, warning = _outlook_query()
+        dv = _outlook_dv()
+        lead_raw = request.args.get("lead", "1")
+        try:
+            lead = int(lead_raw)
+            if not (1 <= lead <= settings.OUTLOOK_LEADS):
+                raise ValueError
+        except ValueError:
+            return _json_response({"error": "lead must be an integer 1-3", "field": "lead"},
+                                  status=400)
+        from firecal.outlook.api import area_cells, issued_targets, map_cells
+        from firecal.duck import connect
+        cells = area_cells(settings, region, area)
+        con = connect(settings, "web")
+        try:
+            issued, targets = issued_targets(con, settings, region)
+            if not issued:
+                return _json_response({"error": "no outlook issued for this region yet",
+                                       "field": "outlook"}, status=422)
+            target = next((t for t in targets if t[0] == lead), None)
+            typ = _json_response({"error": "lead not available", "field": "lead"}, status=422)
+            if target is None:
+                return typ
+            cells_out = map_cells(con, settings, region, cells, issued, lead)
+        finally:
+            con.close()
+        body = {"grid_deg": settings.OUTLOOK_GRID_DEG, "issued": issued,
+                "target": {"year": target[1], "month": target[2]},
+                "model": "climatology",
+                "cells": cells_out,
+                "data_version": dv}
+        resp = _json_response(body, etag=dv)
+        return store(resp)
+
+    @app.route("/api/outlook.csv")
+    def outlook_csv():
+        area, region, warning = _outlook_query()
+        from firecal.outlook.api import area_cells, _outlook_root, issued_csv_rows
+        from firecal.duck import connect
+        cells = area_cells(settings, region, area)
+        con = connect(settings, "web")
+        try:
+            rows = issued_csv_rows(con, settings, region, cells)
+        finally:
+            con.close()
+        from firecal.outlook.grid import g_center
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["issued", "lead", "target_year", "target_month", "lat", "lon",
+                    "p_fire", "p_fire_clim", "expected", "mean_clim", "model"])
+        for issued, lead, ty, tm, la, lo, p, pc, e, m_, model in rows:
+            w.writerow([issued, lead, ty, tm, round(g_center(la), 4), round(g_center(lo), 4),
+                        round(float(p), 4), round(float(pc), 4), round(float(e), 4),
+                        round(float(m_), 4), model])
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "text/csv"
+        resp.headers["Content-Disposition"] = 'attachment; filename="outlook.csv"'
+        return resp
+
+    def _cells_area_range(args):
+        start = args.get("start")
+        end = args.get("end")
+        if not start or not end:
+            raise ParamError("missing start or end", "start" if not start else "end")
+        for label, raw in (("start", start), ("end", end)):
+            try:
+                date.fromisoformat(raw)
+            except ValueError:
+                raise ParamError("start/end must be YYYY-MM-DD", label)
+        return start, end
+
+    @app.route("/api/cells.csv")
+    def cells_csv():
+        area, region, warning = _outlook_query()
+        start, end = _cells_area_range(request.args.to_dict())
+        from firecal.outlook.api import area_cells, cells_rows
+        from firecal.duck import connect
+        cells = area_cells(settings, region, area)
+        con = connect(settings, "web")
+        try:
+            rows = cells_rows(con, settings, region, cells, start, end)
+        except ValueError as exc:
+            con.close()
+            return _json_response({"error": str(exc), "field": "area"}, status=400)
+        finally:
+            con.close()
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["year", "month", "lat", "lon", "value", "value_forest",
+                    "value_farmland", "value_other", "fine_celldays"])
+        for r in rows:
+            w.writerow(r)
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "text/csv"
+        if area.radius_km is not None:
+            base = f"cells_point_{area.lat}_{area.lon}_{area.radius_km}_{start}_{end}"
+        else:
+            base = f"cells_{area.w}_{area.s}_{area.e}_{area.n}_{start}_{end}"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{base}.csv"'
+        return resp
+
+    @app.route("/api/cells.parquet")
+    def cells_parquet():
+        area, region, warning = _outlook_query()
+        start, end = _cells_area_range(request.args.to_dict())
+        from firecal.outlook.api import area_cells, cells_rows
+        from firecal.duck import connect
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        cells = area_cells(settings, region, area)
+        con = connect(settings, "web")
+        try:
+            rows = cells_rows(con, settings, region, cells, start, end)
+        except ValueError as exc:
+            con.close()
+            return _json_response({"error": str(exc), "field": "area"}, status=400)
+        finally:
+            con.close()
+        table = pa.table({
+            "year": [r[0] for r in rows],
+            "month": [r[1] for r in rows],
+            "lat": [r[2] for r in rows],
+            "lon": [r[3] for r in rows],
+            "value": [r[4] for r in rows],
+            "value_forest": [r[5] for r in rows],
+            "value_farmland": [r[6] for r in rows],
+            "value_other": [r[7] for r in rows],
+            "fine_celldays": [r[8] for r in rows],
+        })
+        buf = io.BytesIO()
+        pq.write_table(table, buf, compression="zstd")
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "application/vnd.apache.parquet"
+        if area.radius_km is not None:
+            base = f"cells_point_{area.lat}_{area.lon}_{area.radius_km}_{start}_{end}"
+        else:
+            base = f"cells_{area.w}_{area.s}_{area.e}_{area.n}_{start}_{end}"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{base}.parquet"'
+        return resp
 
     # 304 for If-None-Match
     @app.before_request
     def _not_modified():
-        dv = _app_version(settings)
+        from firecal.outlook.api import outlook_version
+        outlook_path = request.path.startswith(("/api/outlook", "/api/cells"))
+        dv = outlook_version(settings) if outlook_path else _app_version(settings)
         inm = request.headers.get("If-None-Match")
         if inm and inm.strip('"') == dv:
             resp = make_response("", 304)

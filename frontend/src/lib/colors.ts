@@ -64,6 +64,25 @@ export function binLabels(bins: number[]): string[] {
   return labels;
 }
 
+// Chance-of-fire bins for the outlook map (fixed; a chance of exactly 5% is the second bin)
+export const CHANCE_BINS = [
+  { max: 0.05, color: '#ffffb2', label: '0–5%' },
+  { max: 0.15, color: '#fed976', label: '5–15%' },
+  { max: 0.30, color: '#feb24c', label: '15–30%' },
+  { max: 0.50, color: '#fd8d3c', label: '30–50%' },
+  { max: 0.70, color: '#fc4e2a', label: '50–70%' },
+  { max: 0.90, color: '#e31a1c', label: '70–90%' },
+  { max: 1.01, color: '#b10026', label: '90–100%' },
+];
+
+export function chanceColor(pFire: number): string {
+  const p = pFire ?? 0;
+  for (const b of CHANCE_BINS) {
+    if (p < b.max) return b.color;
+  }
+  return CHANCE_BINS[CHANCE_BINS.length - 1].color;
+}
+
 export const ANOMALY_BINS = [
   { max: -75, color: '#2166ac', label: 'below −75%' },
   { max: -40, color: '#67a9cf', label: '−75 to −40%' },

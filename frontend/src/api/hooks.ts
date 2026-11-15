@@ -3,6 +3,7 @@ import { apiFetch } from './client';
 import {
   CalendarResponseSchema, SummaryResponseSchema, MapResponseSchema,
   HotspotsResponseSchema, CoverageResponseSchema, MethodsResponseSchema, SeriesResponseSchema,
+  OutlookResponseSchema, OutlookMapResponseSchema,
 } from './schemas';
 import { buildQueryParams, isQueryValid } from './params';
 import type { AppState } from '../state/urlState';
@@ -68,5 +69,21 @@ export function useSeries(params: string) {
     queryKey: ['series', params],
     queryFn: () => apiFetch('series', `/api/series?${params}`, SeriesResponseSchema),
     enabled: params.length > 0,
+  });
+}
+
+export function useOutlook(areaParams: string, enabled = true) {
+  return useQuery({
+    queryKey: ['outlook', areaParams],
+    queryFn: () => apiFetch('outlook', `/api/outlook?${areaParams}`, OutlookResponseSchema),
+    enabled: enabled && areaParams.length > 0,
+  });
+}
+
+export function useOutlookMap(areaParams: string, lead: number, enabled = true) {
+  return useQuery({
+    queryKey: ['outlook-map', areaParams, lead],
+    queryFn: () => apiFetch('outlook_map', `/api/outlook/map?${areaParams}&lead=${lead}`, OutlookMapResponseSchema),
+    enabled: enabled && areaParams.length > 0 && lead >= 1 && lead <= 3,
   });
 }

@@ -1,11 +1,13 @@
 import { useRef, type KeyboardEvent } from 'react';
 import { useAppState } from '../../state/useAppState';
 import ComparisonsPanel from '../ComparisonsPanel/ComparisonsPanel';
+import OutlookPanel from '../OutlookPanel/OutlookPanel';
 import MethodsPanel from '../MethodsPanel/MethodsPanel';
 import styles from './SidePanel.module.css';
 
 const TABS = [
   { id: 'comparisons', label: 'Comparisons' },
+  { id: 'outlook', label: 'Outlook' },
   { id: 'methods', label: 'Methods' },
 ] as const;
 
@@ -48,7 +50,7 @@ export default function SidePanel() {
         className={styles.panel}
       >
         {state.tab === 'comparisons' && <ComparisonsPanel />}
-        {state.tab === 'watchlist' && <p className={styles.placeholder}>Watchlist coming in 6i.</p>}
+        {state.tab === 'outlook' && <OutlookPanel />}
         {state.tab === 'methods' && <MethodsPanel />}
       </div>
     </section>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { textOn, COUNT_RAMP, countBins, countColor, binLabels } from './colors';
+import { textOn, COUNT_RAMP, countBins, countColor, binLabels, chanceColor, CHANCE_BINS } from './colors';
 
 describe('colors', () => {
   it('textOn', () => {
@@ -25,6 +25,19 @@ describe('colors', () => {
     expect(labels[5]).toBe('149–200');
     expect(labels[6]).toBe('over 200');
     expect(labels).toHaveLength(7);
+  });
+  it('chanceColor: fixed bins, 5% lands in the second bin', () => {
+    expect(chanceColor(0)).toBe('#ffffb2');
+    expect(chanceColor(0.049)).toBe('#ffffb2');
+    expect(chanceColor(0.05)).toBe('#fed976');
+    expect(chanceColor(0.149)).toBe('#fed976');
+    expect(chanceColor(0.15)).toBe('#feb24c');
+    expect(chanceColor(0.30)).toBe('#fd8d3c');
+    expect(chanceColor(0.50)).toBe('#fc4e2a');
+    expect(chanceColor(0.70)).toBe('#e31a1c');
+    expect(chanceColor(0.90)).toBe('#b10026');
+    expect(chanceColor(1.0)).toBe('#b10026');
+    expect(CHANCE_BINS.length).toBe(7);
   });
   it('real mock: Sep 2015 and Sep 2017 land in different bins', () => {
     const calPath = path.join(process.cwd(), 'public', 'mock', 'api_calendar.json');

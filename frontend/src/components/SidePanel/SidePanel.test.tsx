@@ -11,6 +11,7 @@ let state: Pick<AppState, 'tab'>;
 
 vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }) }));
 vi.mock('../ComparisonsPanel/ComparisonsPanel', () => ({ default: () => <div>Comparisons content</div> }));
+vi.mock('../OutlookPanel/OutlookPanel', () => ({ default: () => <div>Outlook content</div> }));
 
 describe('SidePanel', () => {
   beforeEach(() => {
@@ -23,7 +24,7 @@ describe('SidePanel', () => {
     const user = userEvent.setup();
     render(<SidePanel />);
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(2);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Comparisons', 'Outlook', 'Methods']);
     expect(screen.queryByRole('tab', { name: 'Watchlist' })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Comparisons' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'tab-comparisons');
@@ -36,6 +37,8 @@ describe('SidePanel', () => {
     render(<SidePanel />);
     screen.getByRole('tab', { name: 'Comparisons' }).focus();
     await user.keyboard('{ArrowRight}');
-    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'methods' } });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { tab: 'outlook' } });
+    await user.keyboard('{ArrowLeft}');
+    expect(dispatch).toHaveBeenLastCalledWith({ type: 'patch', patch: { tab: 'comparisons' } });
   });
 });

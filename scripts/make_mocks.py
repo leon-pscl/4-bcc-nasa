@@ -44,7 +44,18 @@ def main():
         ("api_coverage.json", "/api/coverage"),
         ("api_methods.json", "/api/methods?region=southeast_asia"),
         ("api_series.json", f"/api/series?{q}"),
+        ("api_outlook.json", f"/api/outlook?bbox={bbox}"),
+        ("api_outlook_map.json", f"/api/outlook/map?bbox={bbox}&lead=1"),
     ]
+    # cover variants: forest, farmland, other (same bbox, same range)
+    for cover in ("forest", "farmland", "other"):
+        endpoints += [
+            (f"api_calendar_{cover}.json", f"/api/calendar?{q}&cover={cover}"),
+            (f"api_summary_{cover}.json", f"/api/summary?{q}&cover={cover}"),
+            (f"api_map_{cover}.json", f"/api/map?{q}&cover={cover}"),
+            (f"api_hotspots_{cover}.json", f"/api/hotspots?{q}&page=1&page_size=100&all_sensors=1&cover={cover}"),
+            (f"api_series_{cover}.json", f"/api/series?{q}&cover={cover}"),
+        ]
     # cover variants: forest, farmland, other (same bbox, same range)
     for cover in ("forest", "farmland", "other"):
         endpoints += [

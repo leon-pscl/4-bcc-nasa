@@ -6,7 +6,7 @@ import L from 'leaflet';
 import MapCard from './MapCard';
 
 const dispatch = vi.fn();
-const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const, cover: 'all' as const };
+const state = { area: { kind: 'bbox' as const, bbox: [110.7, -3.6, 115.9, 0.8] as [number, number, number, number] }, start: '2003-01-01', end: '2026-11-12', view: 'count' as const, tab: 'comparisons' as const, cover: 'all' as const, layer: 'history' as 'history' | 'outlook', lead: 1 as 1 | 2 | 3, cell: undefined as [number, number] | undefined };
 
 const coverage = { regions: [
   { name: 'southeast_asia', bbox: [92.0, -11.0, 141.0, 28.5], synthetic: true, start: '2003-01-01', end: '2026-11-12', latest_date: '2026-11-12', countries: [], platforms: [], label: 'Southeast Asia' },
@@ -17,11 +17,34 @@ const coverage = { regions: [
 vi.mock('../../state/useAppState', () => ({
   useAppState: () => ({ state, dispatch }),
 }));
+const outlookMock = {
+  issued: '2026-10', latest_data_date: '2026-11-14', unit: 'Hotspots (harmonized)', grid_deg: 0.15, threshold: 1,
+  query: { bbox: [110.7, -3.6, 115.9, 0.8], area_km2: 282742 },
+  months: [
+    { year: 2026, month: 11, lead: 1, model: 'climatology', expected: 727.6, typical_range: [180.9, 503.9], normal_mean: 727.6, normal_median: 267.0, observed_so_far: { through_day: 14, value: 1275.3 }, cells_likely: 60 },
+    { year: 2026, month: 12, lead: 2, model: 'climatology', expected: 85.9, typical_range: [44.5, 95.4], normal_mean: 85.9, normal_median: 74.0, observed_so_far: null, cells_likely: 6 },
+    { year: 2027, month: 1, lead: 3, model: 'climatology', expected: 135.6, typical_range: [69.5, 157.7], normal_mean: 135.6, normal_median: 108.8, observed_so_far: null, cells_likely: 7 },
+  ],
+  top_cells: Array.from({ length: 30 }, (_, i) => ({ lat: -2.025 + i * 0.01, lon: 113.925, lead: (i % 3) + 1, p_fire: 0.94 - i * 0.02, expected: 21.3 })),
+  season: { normal_median: [12, 8, 3, 2, 1, 1, 2, 120, 250, 90, 30, 15], normal_mean: [], peak_month: 9, busiest_months: [9, 8, 10] },
+  skill: { top10_capture_pct: 62.35, brier: 0.1132, test_years: [2015, 2025] },
+  data_version: 'dv-mc-dv-o',
+  synthetic: false,
+};
+const outlookMapMock = {
+  grid_deg: 0.15, issued: '2026-10', target: { year: 2026, month: 11 }, model: 'climatology', data_version: 'dv-mc-dv-o',
+  cells: [
+    { lat: -3.525, lon: 114.975, p_fire: 0.94, expected: 21.3, mean_clim: 21.3 },
+    { lat: -3.375, lon: 114.825, p_fire: 0.05, expected: 0.4, mean_clim: 0.4 },
+  ],
+};
 vi.mock('../../api/hooks', () => ({
   useCoverage: () => ({ data: coverage, isLoading: false }),
   useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-12', valid: true, coverage }),
   useMap: () => ({ data: { grid_deg: 0.05, aggregated_to: null, cells: [], data_version: 'v' } }),
   useCalendar: () => ({ data: null }),
+  useOutlook: () => ({ data: outlookMock, isLoading: false }),
+  useOutlookMap: () => ({ data: outlookMapMock, isLoading: false }),
 }));
 
 describe('MapCard', () => {
@@ -276,6 +299,37 @@ describe('MapCard', () => {
     await user.clear(south);
     await user.type(south, '-4');
     expect(screen.getByText('South 4°S')).toBeInTheDocument();
+  });
+
+  it('layer switch: History | Outlook buttons dispatch the layer patch', async () => {
+    render(<MapCard />);
+    const user = userEvent.setup();
+    const outlookBtn = screen.getByRole('button', { name: 'Outlook' });
+    const historyBtn = screen.getByRole('button', { name: 'History' });
+    expect(historyBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(outlookBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(outlookBtn);
+    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { layer: 'outlook' } });
+  });
+
+  it('outlook layer renders outlook cells and the month switch', async () => {
+    const originalLayer = state.layer;
+    state.layer = 'outlook';
+    render(<MapCard />);
+    expect(screen.getByRole('group', { name: 'Outlook month' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nov' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/15 km cells/)).toBeInTheDocument();
+    state.layer = originalLayer;
+  });
+
+  it('outlook month switch dispatches the lead patch', async () => {
+    const originalLayer = state.layer;
+    state.layer = 'outlook';
+    render(<MapCard />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Dec' }));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'patch', patch: { lead: 2 } });
+    state.layer = originalLayer;
   });
 
   it('edge fields are in DOM order North, West, East, South', () => {

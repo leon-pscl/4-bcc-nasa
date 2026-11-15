@@ -74,6 +74,74 @@ export const HotspotsResponseSchema = z.object({
   data_version: z.string(),
 });
 
+export const OutlookMonthSchema = z.object({
+  year: z.number(),
+  month: z.number(),
+  lead: z.number(),
+  model: z.string(),
+  expected: z.number(),
+  typical_range: z.array(z.number()).nullable(),
+  normal_mean: z.number().nullable(),
+  normal_median: z.number().nullable(),
+  observed_so_far: z.object({ through_day: z.number(), value: z.number() }).nullable(),
+  cells_likely: z.number(),
+});
+
+export const OutlookTopCellSchema = z.object({
+  lat: z.number(),
+  lon: z.number(),
+  lead: z.number(),
+  p_fire: z.number(),
+  expected: z.number(),
+});
+
+export const OutlookSeasonSchema = z.object({
+  normal_median: z.array(z.number()),
+  normal_mean: z.array(z.number()),
+  peak_month: z.number(),
+  busiest_months: z.array(z.number()),
+});
+
+export const OutlookSkillSchema = z.object({
+  top10_capture_pct: z.number().nullable(),
+  brier: z.number().nullable(),
+  test_years: z.array(z.number()),
+  big_years: z.record(z.string(), z.number().nullable()).optional(),
+});
+
+export const OutlookResponseSchema = z.object({
+  query: AreaQuerySchema,
+  issued: z.string(),
+  latest_data_date: z.string(),
+  unit: z.string(),
+  grid_deg: z.number(),
+  threshold: z.number(),
+  months: z.array(OutlookMonthSchema),
+  top_cells: z.array(OutlookTopCellSchema),
+  season: OutlookSeasonSchema,
+  skill: OutlookSkillSchema.nullable(),
+  synthetic: z.boolean(),
+  data_version: z.string(),
+  coverage_warning: z.string().nullable().optional(),
+});
+
+export const OutlookMapCellSchema = z.object({
+  lat: z.number(),
+  lon: z.number(),
+  p_fire: z.number(),
+  expected: z.number(),
+  mean_clim: z.number(),
+});
+
+export const OutlookMapResponseSchema = z.object({
+  grid_deg: z.number(),
+  issued: z.string(),
+  target: z.object({ year: z.number(), month: z.number() }),
+  model: z.string(),
+  cells: z.array(OutlookMapCellSchema),
+  data_version: z.string(),
+});
+
 export const CoverageRegionSchema = z.object({
   name: z.string(),
   label: z.string(),
@@ -84,6 +152,7 @@ export const CoverageRegionSchema = z.object({
   platforms: z.array(z.string()),
   latest_date: z.string(),
   synthetic: z.boolean(),
+  outlook: z.object({ issued: z.string(), targets: z.array(z.string()) }).optional(),
 });
 
 export const StarterAreaSchema = z.object({
@@ -119,6 +188,23 @@ export const MethodsResponseSchema = z.object({
     calibration_years: z.object({ years: z.array(z.number()), metrics: MetricsSchema }),
     validation_years: z.object({ years: z.array(z.number()), metrics: MetricsSchema }),
   }),
+  grid: z.object({
+    cells: z.record(z.string(), z.number()),
+    masked_share_of_fire_pct: z.number().nullable(),
+  }).optional(),
+  outlook: z.object({
+    grid_deg: z.number(),
+    mask: z.object({
+      nonburnable_classes: z.array(z.number()),
+      min_burnable_pct: z.number(),
+    }),
+    threshold: z.number(),
+    p_fire_rule: z.string(),
+    model: z.string(),
+    issued: z.string().nullable(),
+    targets: z.array(z.string()),
+    skill: OutlookSkillSchema.nullable(),
+  }).optional(),
   data_version: z.string(),
 });
 
@@ -158,3 +244,5 @@ export type HotspotsResponse = z.infer<typeof HotspotsResponseSchema>;
 export type CoverageResponse = z.infer<typeof CoverageResponseSchema>;
 export type MethodsResponse = z.infer<typeof MethodsResponseSchema>;
 export type SeriesResponse = z.infer<typeof SeriesResponseSchema>;
+export type OutlookResponse = z.infer<typeof OutlookResponseSchema>;
+export type OutlookMapResponse = z.infer<typeof OutlookMapResponseSchema>;

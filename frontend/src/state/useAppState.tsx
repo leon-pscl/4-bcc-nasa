@@ -33,6 +33,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       view: 'count' as const,
       tab: 'comparisons' as const,
       cover: 'all' as const,
+      layer: 'history' as const,
+      lead: 1 as const,
     };
 
     if (initialHashEmpty) {
@@ -49,6 +51,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       focus: parsed.focus,
       tab: parsed.tab ?? defaults.tab,
       cover: parsed.cover ?? defaults.cover,
+      layer: parsed.layer ?? defaults.layer,
+      lead: parsed.lead ?? defaults.lead,
+      cell: parsed.cell,
     }});
   }, [coverage, state, initialHashEmpty]);
 

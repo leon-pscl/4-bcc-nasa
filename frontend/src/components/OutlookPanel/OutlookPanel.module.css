@@ -1,0 +1,35 @@
+.section { display: flex; flex-direction: column; gap: 12px; }
+.heading { font-family: var(--font-mono); font-size: 16px; font-weight: 600; margin: 0; }
+.mutedLine { font-size: 12px; color: var(--muted); margin: 0; }
+.card { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; background: var(--surface); }
+.label { font-size: 12px; color: var(--muted); }
+.bigRow { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
+.big { font-family: var(--font-mono); font-size: 32px; font-weight: 600; line-height: 1; }
+.unit { font-size: 12px; color: var(--muted); }
+.typical { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.typicalMedian { font-size: 13px; margin-top: 8px; }
+.soFar { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.foot { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
+.switch { display: inline-flex; border: 1px solid var(--ink); border-radius: var(--r-control); overflow: hidden; }
+.switchBtn { height: 36px; padding: 0 12px; border: none; background: var(--surface); color: var(--ink); font-size: 13px; cursor: pointer; }
+.switchBtn + .switchBtn { border-left: 1px solid var(--ink); }
+.switchBtn[aria-pressed='true'] { background: var(--ink); color: #fff; }
+.whereHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.topList { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.topRow { display: grid; grid-template-columns: 16px 1fr auto auto auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--fill); }
+.topRank { color: var(--muted); font-size: 11px; }
+.topLoc { font-variant-numeric: tabular-nums; }
+.topChance { font-weight: 600; font-variant-numeric: tabular-nums; }
+.topHot { color: var(--muted); font-size: 12px; }
+.showMap { height: 44px; padding: 0 12px; display: inline-flex; align-items: center; border: 1px solid var(--ink); border-radius: var(--r-control); color: var(--ink); background: var(--surface); font-size: 13px; cursor: pointer; }
+.showMap:hover { background: var(--fill); }
+.canvas120 { height: 120px; }
+.chartHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+.sentence { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.stat { border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.statLabel { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.statValue { font-family: var(--font-mono); font-size: 22px; font-weight: 600; margin-top: 2px; }
+.methodsLink { background: none; border: none; color: var(--ink); text-decoration: underline; font-size: 12px; cursor: pointer; padding: 4px 0; }
+.muted { color: var(--muted); font-size: 13px; }

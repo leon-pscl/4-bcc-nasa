@@ -78,6 +78,7 @@ def build_outlook(settings, region, latest_date, dry_run=False):
     for col, t in (("g_lat_idx", "int32"), ("g_lon_idx", "int32"), ("lead", "int8"),
                    ("target_year", "int16"), ("target_month", "int8")):
         new[col] = new[col].astype(t)
+    from firecal.dataset import write_partition, fingerprint, load_state, save_state
     tmp_pq = str(Path(settings.DATA_PROCESSED) / f".outlook_new_{issued}.parquet")
     new.to_parquet(tmp_pq, engine="pyarrow", compression="zstd", index=False)
     con = duckdb.connect()
@@ -90,4 +91,8 @@ def build_outlook(settings, region, latest_date, dry_run=False):
     finally:
         con.close()
         os.unlink(tmp_pq)
+    state = load_state(settings)
+    state.setdefault("outlook", {})[f"{region}/{issued[:4]}"] = {
+        "fingerprint": fingerprint(issued, len(new), float(new.p_fire.sum()), float(new.expected.sum()))}
+    save_state(settings, state)
     return new, issued, leads
