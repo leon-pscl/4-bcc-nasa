@@ -74,6 +74,7 @@ class Settings:
 
     DATA_RAW: str = "data/raw"
     DATA_PROCESSED: str = "data/processed"
+    DATA_ZIP_URL: str = ""
     FIRMS_MAP_KEY: str = field(default="", repr=False)
     DUCKDB_WEB_MEMORY_LIMIT: str = "1GB"
     DUCKDB_WEB_THREADS: int = 2
@@ -88,6 +89,7 @@ class Settings:
         s = cls()
         s.DATA_RAW = os.environ.get("DATA_RAW", file_values.get("DATA_RAW", s.DATA_RAW))
         s.DATA_PROCESSED = os.environ.get("DATA_PROCESSED", file_values.get("DATA_PROCESSED", s.DATA_PROCESSED))
+        s.DATA_ZIP_URL = os.environ.get("DATA_ZIP_URL", file_values.get("DATA_ZIP_URL", s.DATA_ZIP_URL))
         s.FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", file_values.get("FIRMS_MAP_KEY", s.FIRMS_MAP_KEY))
         cache_mb = os.environ.get("API_CACHE_MB", file_values.get("API_CACHE_MB"))
         if cache_mb:

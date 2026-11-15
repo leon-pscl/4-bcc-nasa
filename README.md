@@ -147,6 +147,43 @@ Open **http://localhost:5173** in your browser (Vite automatically proxies API r
 
 ---
 
+## Run it on the cloud (Render)
+
+The same app runs on [Render](https://render.com) on the Standard plan (1 CPU, 2 GB).
+
+- **Build command** — download the release archive and extract it, turning
+  Windows backslash entry names into folders:
+
+  ```bash
+  curl -fL https://github.com/leon-pscl/4-bcc-nasa/releases/download/v2.0.1/processed_data.zip -o /tmp/processed_data.zip
+  python - <<'EOF'
+  import pathlib, zipfile
+  z = zipfile.ZipFile("/tmp/processed_data.zip")
+  for m in z.infolist():
+      n = m.filename.replace("\\", "/").strip("/")
+      if not n:
+          continue
+      p = pathlib.Path("/tmp/firecal_data") / n
+      if m.is_dir() or m.filename.endswith(("/", "\\")):
+          p.mkdir(parents=True, exist_ok=True)
+      else:
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_bytes(z.read(m))
+  EOF
+  ```
+
+- **Start command**:
+
+  ```bash
+  gunicorn -w 1 --threads 4 --timeout 120 -b 0.0.0.0:$PORT app:app
+  ```
+
+- **Env**: `DATA_ZIP_URL` (release archive URL) so the app self-provisions the
+  data into `/tmp/firecal_data` when the filesystem mount is empty;
+  `DATA_PROCESSED=/app/data/processed`; `DUCKDB_WEB_MEMORY_LIMIT=1GB`.
+
+---
+
 ## Dataset Ingestion Pipeline
 
 To process raw FIRMS CSV downloads into harmonized Parquet partitions:

@@ -1,8 +1,12 @@
 """Stage 5 tests: every C6 endpoint against a tiny synthetic dataset."""
 
+import io
 import json
 import os
+import shutil
+import zipfile
 from datetime import date
+from pathlib import Path
 
 import duckdb
 import pandas as pd
@@ -10,6 +14,7 @@ import pytest
 
 from firecal.config import Settings
 from firecal.web import create_app
+from firecal.web.routes import _ensure_data
 
 # fixture values (cell A, one row per date)
 JUNE = {2017: 2, 2018: 3, 2019: 4, 2020: 5, 2021: 6, 2022: 7,
@@ -160,6 +165,55 @@ def test_health_error_without_harmonized(tmp_path):
     d = r.get_json()
     assert d["status"] == "error"
     assert "error" in d
+
+
+def test_ensure_data_no_network_without_data_zip_url(tmp_path, monkeypatch):
+    """:_ensure_data must not touch the network when DATA_ZIP_URL is empty (CI must not hit it)."""
+    empty = tmp_path / "empty_ensure"
+    empty.mkdir()
+    settings = Settings()
+    settings.DATA_PROCESSED = str(empty)
+    settings.DATA_RAW = str(empty / "raw")
+    settings.REGIONS = {"test_region": (-70.0, -20.0, -60.0, 0.0)}
+    settings.DATA_ZIP_URL = ""
+
+    calls = []
+
+    def boom(req, *a, **k):
+        calls.append(req)
+        return None
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    ok = _ensure_data(settings)
+    assert ok is False
+    assert calls == []
+
+
+def test_ensure_data_download_extract_and_refuse_escape(tmp_path, monkeypatch):
+    """:_ensure_data extracts a release zip into the fallback dir (backslash-safe) and refuses .. entries."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("harmonized_daily/region=r1/year=2020/data_0.parquet", b"x")
+        z.writestr("../evil.parquet", b"x")
+    buf.seek(0)
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, *a, **k: buf)
+
+    settings = Settings()
+    empty = tmp_path / "empty_ensure_dl"
+    empty.mkdir()
+    settings.DATA_PROCESSED = str(empty)
+    settings.DATA_RAW = str(empty / "raw")
+    settings.REGIONS = {"test_region": (-70.0, -20.0, -60.0, 0.0)}
+    settings.DATA_ZIP_URL = "https://example.invalid/processed_data.zip"
+
+    try:
+        ok = _ensure_data(settings)
+        assert ok is True
+        expected = Path(settings.DATA_PROCESSED) / "harmonized_daily" / "region=r1" / "year=2020" / "data_0.parquet"
+        assert expected.exists()
+        assert not (Path(settings.DATA_PROCESSED) / "evil.parquet").exists()
+    finally:
+        shutil.rmtree(str(Path(settings.DATA_PROCESSED) / "harmonized_daily"), ignore_errors=True)
 
 
 def test_calendar_values_and_shape(client):

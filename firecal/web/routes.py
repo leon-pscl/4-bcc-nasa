@@ -78,9 +78,7 @@ def _ensure_data(settings):
     global _ensure_data_status
     try:
         from pathlib import Path
-        import glob
         import shutil
-        import subprocess
         import urllib.request
         import zipfile
         from firecal.dataset import processed_root
@@ -92,38 +90,23 @@ def _ensure_data(settings):
             _ensure_data_status = {"ok": True, "count": len(cand), "path": str(root)}
             return True
 
-        # 2. Try chmod -R 777 on current root in case of permission locks
-        if os.name != "nt":
-            try:
-                subprocess.run(["chmod", "-R", "777", str(root)], capture_output=True)
-            except Exception:
-                pass
-            cand = list(root.rglob("data_0.parquet"))
-            if cand:
-                _ensure_data_status = {"ok": True, "count": len(cand), "path": str(root)}
-                return True
-
-        # 3. Always use a clean dedicated directory in /tmp on Linux
+        # 2. Fallback for a read-only app folder: clean dedicated dir in /tmp.
         target_dir = Path("/tmp/firecal_data") if os.name != "nt" else Path("data/processed")
         target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Check if /tmp/firecal_data already has partitions
         cand = list(target_dir.rglob("data_0.parquet"))
-        if not cand:
-            # Download official release archive directly
+        if not cand and settings.DATA_ZIP_URL:
+            # Download the release archive and extract into target_dir,
+            # normalizing any Windows backslashes in the entry names.
             dl_path = Path("/tmp/official_processed_data.zip") if os.name != "nt" else Path("temp_data.zip")
-            url = "https://github.com/leon-pscl/4-bcc-nasa/releases/download/v1.0.0/processed_data.zip"
-            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
+            req = urllib.request.Request(settings.DATA_ZIP_URL, headers={"User-Agent": "curl/7.68.0"})
             with urllib.request.urlopen(req) as resp, open(dl_path, "wb") as out:
                 shutil.copyfileobj(resp, out)
-
-            # Extract cleanly into target_dir, normalizing any Windows backslashes
             shutil.rmtree(str(target_dir), ignore_errors=True)
             target_dir.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(dl_path, "r") as z:
                 for member in z.infolist():
                     clean_name = member.filename.replace("\\", "/").strip("/")
-                    if not clean_name:
+                    if not clean_name or ".." in clean_name.split("/"):
                         continue
                     target_path = target_dir / clean_name
                     if member.is_dir() or member.filename.endswith("/") or member.filename.endswith("\\"):
@@ -133,14 +116,9 @@ def _ensure_data(settings):
                         with z.open(member) as source, open(target_path, "wb") as target:
                             shutil.copyfileobj(source, target)
 
-            if os.name != "nt":
-                try:
-                    subprocess.run(["chmod", "-R", "777", str(target_dir)], capture_output=True)
-                except Exception:
-                    pass
-
-        # 4. Find the directory containing harmonized_daily
         cand = list(target_dir.rglob("data_0.parquet"))
+
+        # 3. Find the directory containing harmonized_daily
         if cand:
             # Find the root that contains harmonized_daily
             for p in cand:
