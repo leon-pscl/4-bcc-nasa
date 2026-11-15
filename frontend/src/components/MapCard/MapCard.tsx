@@ -6,7 +6,7 @@ import { useQueryParams, useMap as useMapData, useCalendar } from '../../api/hoo
 import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
 import { formatNumber, formatDate, formatLat, formatLon, formatDeg } from '../../lib/format';
 import { COUNT_RAMP, countBins, countColor } from '../../lib/colors';
-import type { AppState, AreaState } from '../../state/urlState';
+import { areaKey, type AppState, type AreaState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
 type BoxDraft = { n: string; s: string; e: string; w: string };
@@ -235,17 +235,17 @@ export default function MapCard() {
     didInitialFit.current = true;
   }, [map, state, coverageBounds]);
 
-  const areaKey = state ? JSON.stringify(state.area) : '';
+  const areaKeyValue = state ? areaKey(state.area) : '';
   const lastAnalyzeKey = useRef<string | null>(null);
-  const prevAreaKey = useRef(areaKey);
+  const prevAreaKey = useRef(areaKeyValue);
   useEffect(() => {
-    if (prevAreaKey.current === areaKey) return;
-    prevAreaKey.current = areaKey;
-    if (lastAnalyzeKey.current === areaKey) { lastAnalyzeKey.current = null; return; }
+    if (prevAreaKey.current === areaKeyValue) return;
+    prevAreaKey.current = areaKeyValue;
+    if (lastAnalyzeKey.current === areaKeyValue) { lastAnalyzeKey.current = null; return; }
     if (!map || !state) return;
     const target = boundsFromArea(state.area);
     if (target) map.fitBounds(target, { padding: [20, 20] });
-  }, [areaKey, map, state]);
+  }, [areaKeyValue, map, state]);
 
   const areaLabel = (() => {
     if (mode === 'point') return area ? `Selected area · ${formatNumber(area)} km²` : null;
@@ -270,7 +270,7 @@ export default function MapCard() {
     if (mode === 'box' && edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
     else if (mode === 'point' && pointValid) patch.area = { kind: 'point', point: [pLat, pLon], radius_km: pRad };
     dispatch({ type: 'patch', patch });
-    if (patch.area) lastAnalyzeKey.current = JSON.stringify(patch.area);
+    if (patch.area) lastAnalyzeKey.current = areaKey(patch.area);
     const target = mode === 'box' ? rectBounds : circleBounds;
     if (map && target) map.fitBounds(target, { padding: [20, 20] });
   }
