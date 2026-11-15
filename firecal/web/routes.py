@@ -529,6 +529,13 @@ def create_app(settings=None, dist_dir=None):
                 ORDER BY d.acq_datetime_utc
                 LIMIT {page_size} OFFSET {offset}
             """).df()
+            # data span for rows_note (computed while con is open)
+            try:
+                mn, mx = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS d").fetchone()
+                request._data_min = str(mn)[:10] if mn is not None else None
+                request._data_max = str(mx)[:10] if mx is not None else None
+            except Exception:
+                request._data_min = request._data_max = None
         finally:
             con.close()
         columns = ["date_local", "acq_datetime_utc", "latitude", "longitude",
@@ -541,13 +548,10 @@ def create_app(settings=None, dist_dir=None):
             for r in rows_df.itertuples(index=False, name=None)
         ]
         rows_note = None
-        if total == 0:
-            try:
-                mn, mx = con.execute(f"SELECT MIN(date_local), MAX(date_local) FROM {root} AS d").fetchone()
-                if mn is not None and (start < str(mn)[:10] or end > str(mx)[:10]):
-                    rows_note = f"Hotspots are available from {str(mn)[:10]} to {str(mx)[:10]} only."
-            except Exception:
-                pass
+        mn = getattr(request, "_data_min", None)
+        mx = getattr(request, "_data_max", None)
+        if mn is not None and (start < mn or end > mx):
+            rows_note = f"Hotspots are available from {mn} to {mx} only."
         body = {"page": page, "page_size": page_size, "total": total,
                 "rows": rows, "data_version": dv,
                 "rows_note": rows_note,
