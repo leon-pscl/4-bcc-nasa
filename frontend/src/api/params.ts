@@ -1,10 +1,9 @@
 import type { AppState, AreaState } from '../state/urlState';
 import type { CoverageResponse } from './schemas';
-import { areaKm2, pointAreaKm2, MAX_AREA_KM2 } from '../lib/geo';
+import { areaKm2, MAX_AREA_KM2 } from '../lib/geo';
 
 export function buildAreaParams(area: AreaState): string {
-  if (area.kind === 'bbox') return `bbox=${area.bbox.join(',')}`;
-  return `point=${area.point.join(',')}&radius_km=${area.radius_km}`;
+  return `bbox=${area.bbox.join(',')}`;
 }
 
 export function buildQueryParams(state: Pick<AppState, 'area' | 'start' | 'end' | 'cover'>): string {
@@ -23,14 +22,7 @@ export function isAreaValid(area: AreaState, coverage?: CoverageResponse): boole
     if (!coverage) return true;
     return coverage.regions.some((r) => w >= r.bbox[0] && e <= r.bbox[2] && s >= r.bbox[1] && n <= r.bbox[3]);
   }
-  const [lat, lon] = area.point;
-  const r = area.radius_km;
-  if (![lat, lon, r].every(Number.isFinite)) return false;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
-  if (r < 1 || r > 500) return false;
-  if (pointAreaKm2(r) > MAX_AREA_KM2) return false;
-  if (!coverage) return true;
-  return coverage.regions.some((reg) => lon >= reg.bbox[0] && lon <= reg.bbox[2] && lat >= reg.bbox[1] && lat <= reg.bbox[3]);
+  return true;
 }
 
 export function isDatesValid(start: string, end: string, coverage?: CoverageResponse, area?: AreaState): boolean {
@@ -40,9 +32,6 @@ export function isDatesValid(start: string, end: string, coverage?: CoverageResp
   if (area?.kind === 'bbox') {
     const [w, s, e, n] = area.bbox;
     region = coverage.regions.find((r) => w >= r.bbox[0] && e <= r.bbox[2] && s >= r.bbox[1] && n <= r.bbox[3]) ?? region;
-  } else if (area?.kind === 'point') {
-    const [lat, lon] = area.point;
-    region = coverage.regions.find((r) => lon >= r.bbox[0] && lon <= r.bbox[2] && lat >= r.bbox[1] && lat <= r.bbox[3]) ?? region;
   }
   const covStart = region.start;
   const covEnd = region.latest_date ?? region.end;

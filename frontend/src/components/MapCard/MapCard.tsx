@@ -16,10 +16,8 @@ const MONTH_FULL = ['January','February','March','April','May','June','July','Au
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function boundsFromArea(area: AreaState): [[number, number], [number, number]] | null {
-  if (area.kind === 'bbox') { const [w, s, e, n] = area.bbox; return [[s, w], [n, e]]; }
-  const [lat, lon] = area.point;
-  const d = area.radius_km / 111;
-  return [[lat - d, lon - d], [lat + d, lon + d]];
+  const [w, s, e, n] = area.bbox;
+  return [[s, w], [n, e]];
 }
 
 function DrawController({ drawing, onStart, onMove, onEnd, onAbort, onCancel }: {
@@ -132,7 +130,6 @@ export default function MapCard() {
   const outlookOn = layer === 'outlook';
   const { data: outlook } = useOutlook(areaParams, outlookOn);
   const { data: outlookMap } = useOutlookMap(areaParams, lead, outlookOn);
-  const mode = 'box' as const;
   const [boxDraft, setBoxDraft] = useState<BoxDraft | null>(null);
   const [dateDraft, setDateDraft] = useState<{ start: string; end: string } | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -210,12 +207,10 @@ export default function MapCard() {
 
   const en = edges?.n ?? null, es = edges?.s ?? null, ee = edges?.e ?? null, ew = edges?.w ?? null;
   const rectBounds = useMemo((): [[number, number], [number, number]] | null => {
-    if (mode !== 'box') return null;
     if (live) return [[Math.min(live.a.lat, live.b.lat), Math.min(live.a.lng, live.b.lng)], [Math.max(live.a.lat, live.b.lat), Math.max(live.a.lng, live.b.lng)]];
     if (en !== null && es !== null && ee !== null && ew !== null) return [[es, ew], [en, ee]];
     return null;
-  }, [mode, live, en, es, ee, ew]);
-  const circleBounds = null;
+  }, [live, en, es, ee, ew]);
   const coverageBounds = useMemo((): [[number, number], [number, number]] | null => {
     if (!coverage?.regions?.length) return null;
     const rs = coverage.regions.map((r) => r.bbox);
@@ -255,7 +250,7 @@ export default function MapCard() {
     const sa = coverage?.starter_areas.find((x) => x.name === name);
     if (!sa) return;
     const [w, s, e, n] = sa.bbox;
-    setMode('box'); setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
+    setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
     if (map) map.fitBounds([[s, w], [n, e]], { padding: [20, 20], maxZoom: 10 });
   }
 
@@ -265,7 +260,7 @@ export default function MapCard() {
     if (edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
     dispatch({ type: 'patch', patch });
     if (patch.area) lastAnalyzeKey.current = areaKey(patch.area);
-    const target = mode === 'box' ? rectBounds : circleBounds;
+    const target = rectBounds;
     if (map && target) map.fitBounds(target, { padding: [20, 20], maxZoom: 10 });
   }
 
@@ -360,7 +355,7 @@ export default function MapCard() {
                 className={styles.controlBtn}
                 aria-pressed={drawing}
                 aria-label="Draw area"
-                disabled={mode === 'point'}
+
                 onClick={() => setDrawing((x) => !x)}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"><rect x="4" y="4" width="16" height="16" rx="1" /></svg>
