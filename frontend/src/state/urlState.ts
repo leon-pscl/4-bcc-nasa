@@ -4,6 +4,12 @@ export type AreaState =
 
 export type Cover = 'all' | 'forest' | 'farmland' | 'other';
 
+// fixed-order key for the outside-change check; key order must not depend on object literal order
+export function areaKey(area: AreaState): string {
+  if (area.kind === 'bbox') return `bbox:${area.bbox.join(',')}`;
+  return `point:${area.point.join(',')}:${area.radius_km}`;
+}
+
 export interface AppState {
   area: AreaState;
   start: string;
