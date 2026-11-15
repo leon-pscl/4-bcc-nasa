@@ -23,7 +23,7 @@ export default function HotspotTable() {
   const [page, setPage] = useState(1);
   const [showSensors, setShowSensors] = useState(false);
   const [visible, setVisible] = useState(false);
-  const ref = useRef<HTMLElement | null>(null);
+  const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -67,7 +67,7 @@ export default function HotspotTable() {
   })();
 
   return (
-    <section className={styles.card} ref={ref as any}>
+    <section className={styles.card} ref={ref}>
       <div className={styles.header}>
         <h2 className={styles.title}>Hotspots in this search</h2>
         <div className={styles.count}>{headingRight}</div>

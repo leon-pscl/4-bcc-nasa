@@ -1,6 +1,6 @@
 import { useAppState } from '../../state/useAppState';
 import { useCoverage, useMethods, useQueryParams, useSeries } from '../../api/hooks';
-import { insideRegion, pointInRegion } from '../../lib/geo';
+import { insideRegion } from '../../lib/geo';
 import styles from './MethodsPanel.module.css';
 
 function fmt(v: number, digits = 3) { return v.toFixed(digits); }
