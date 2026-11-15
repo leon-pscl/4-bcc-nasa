@@ -39,7 +39,7 @@ detections.
   cells held **62.35%** of a month's fire (Brier score 0.1132); the big years
   landed the same (2015: 63.0% · 2019: 63.9% · 2023: 63.4%).
 - Calibration: VIIRS-referenced `k` with shrinkage (SHRINK_M=30); held-out
-  years 2018–2021 in the Methods tab (e.g. r ≈ 0.95+, bias −2..5%).
+  years 2018–2021 in the Methods tab (r 0.997, bias -4.6%).
 
 ## Run it
 
@@ -84,14 +84,19 @@ The same app runs on Azure App Service (Linux, Python 3.12, B1 plan, East Asia r
 - **Startup command**:
 
   ```bash
-  gunicorn -w 1 --threads 4 --timeout 120 --bind=0.0.0.0:8000 app:app
+  gunicorn -w 1 --threads 4 --timeout 600 --bind=0.0.0.0:8000 app:app
   ```
 
 - **App settings**: `DUCKDB_WEB_MEMORY_LIMIT=1GB`,
-  `DATA_PROCESSED=/home/site/wwwroot/data/processed`,
-  `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, **Always On** enabled.
+  `SCM_DO_BUILD_DURING_DEPLOYMENT=true`,
+  `DATA_ZIP_URL=<the v2 zip link>`,
+  `WEBSITES_CONTAINER_START_TIME_LIMIT=1800`,
+  **Always On** enabled. (No `DATA_PROCESSED`: Oryx runs the app from a /tmp
+  folder, so an absolute `/home/site/wwwroot` path finds nothing; the default
+  relative `data/processed` works.)
 - **Data**: fetched by the deployment workflow from `DATA_ZIP_URL` (the
   `processed_data_v2.zip` release asset) into the app's data directory.
+- **Live app**: https://4-bcc-embertrace-bkgrd0f8b7fug3h3.eastasia-01.azurewebsites.net
 
 ## What the outlook is — and is not
 
@@ -116,12 +121,12 @@ The same app runs on Azure App Service (Linux, Python 3.12, B1 plan, East Asia r
   counts reflect the part inside (on-edge fine cells are ~1 in 10,000 of the
   fine grid).
 - **MODIS was estimated.** Before Feb 2012 every hotspot is a MODIS×k estimate
-  (±13% typical error globally; ±5.5% on this region's held-out years).
+  (Central Kalimantan pre-2012 yearly error ±13%).
 - **NRT caveat.** NASA NRT files carry no `type` column, so static sources
   (gas flares, volcanoes) can't be filtered out of recent weeks. Measured:
   242,342 (12.1%) of 2026-NRT detections sit in cells with archive type 1/2
-  detections — expect some small flares near those cells until the next
-  standard-processing re-ingest.
+  detections — a loose test whose top cells are peatland; expect some small
+  flares near those cells until the next standard-processing re-ingest.
 - **Mask is from land, never from fire.** Sea/lake/barren/ice cells hold no
   outlook (0.04% of fire was dropped with them). Wetlands (peat swamps) are
   kept — that is where Kalimantan burns.

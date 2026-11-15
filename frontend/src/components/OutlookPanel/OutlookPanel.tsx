@@ -53,6 +53,7 @@ export default function OutlookPanel() {
   }), []);
 
   if (!valid) return <p className={styles.muted}>Choose a valid area to see the outlook.</p>;
+  if (state?.cover && state.cover !== 'all') return <p className={styles.muted}>The outlook covers all fire types; the land-type filter doesn't apply to it.</p>;
   if (isLoading) return <p className={styles.muted}>Loading the outlook.</p>;
   if (isError || !outlook) return <p className={styles.muted}>The outlook is not available for this area.</p>;
 
