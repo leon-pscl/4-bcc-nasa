@@ -278,18 +278,12 @@ describe('MapCard', () => {
     expect(screen.getByRole('button', { name: 'Draw area' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('shows side labels for the draft box; point mode shows none', async () => {
+  it('shows side labels for the draft box', async () => {
     render(<MapCard />);
     expect(screen.getByText('North 0.8°N')).toBeInTheDocument();
     expect(screen.getByText('South 3.6°S')).toBeInTheDocument();
     expect(screen.getByText('West 110.7°E')).toBeInTheDocument();
     expect(screen.getByText('East 115.9°E')).toBeInTheDocument();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Point + radius' }));
-    expect(screen.queryByText('North 0.8°N')).not.toBeInTheDocument();
-    expect(screen.queryByText('South 3.6°S')).not.toBeInTheDocument();
-    expect(screen.queryByText('West 110.7°E')).not.toBeInTheDocument();
-    expect(screen.queryByText('East 115.9°E')).not.toBeInTheDocument();
   });
 
   it('side label follows the South field value', async () => {

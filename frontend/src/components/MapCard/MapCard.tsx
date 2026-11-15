@@ -4,16 +4,14 @@ import type { LatLng, Map as LeafletMap } from 'leaflet';
 import { useAppState } from '../../state/useAppState';
 import { useQueryParams, useMap as useMapData, useCalendar, useOutlook, useOutlookMap } from '../../api/hooks';
 import { buildAreaParams } from '../../api/params';
-import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges, validatePoint, pointAreaKm2, pointInRegion } from '../../lib/geo';
+import { parseEdges, areaKm2, validateEdges, insideRegion, cornersToEdges } from '../../lib/geo';
 import { formatNumber, formatDate, formatLat, formatLon, formatDeg } from '../../lib/format';
 import { COUNT_RAMP, countBins, countColor, CHANCE_BINS, chanceColor } from '../../lib/colors';
 import { areaKey, type AppState, type AreaState } from '../../state/urlState';
 import styles from './MapCard.module.css';
 
 type BoxDraft = { n: string; s: string; e: string; w: string };
-type PointDraft = { lat: string; lon: string; radius: string };
 const emptyBox: BoxDraft = { n: '', s: '', e: '', w: '' };
-const emptyPoint: PointDraft = { lat: '', lon: '', radius: '' };
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -134,9 +132,8 @@ export default function MapCard() {
   const outlookOn = layer === 'outlook';
   const { data: outlook } = useOutlook(areaParams, outlookOn);
   const { data: outlookMap } = useOutlookMap(areaParams, lead, outlookOn);
-  const [mode, setMode] = useState<'box' | 'point'>('box');
+  const mode = 'box' as const;
   const [boxDraft, setBoxDraft] = useState<BoxDraft | null>(null);
-  const [pointDraft, setPointDraft] = useState<PointDraft>(emptyPoint);
   const [dateDraft, setDateDraft] = useState<{ start: string; end: string } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [basemap, setBasemap] = useState<'street' | 'satellite'>('street');
@@ -155,17 +152,9 @@ export default function MapCard() {
 
   useEffect(() => {
     if (!state) return;
-    if (!boxDraft) {
-      if (state.area.kind === 'bbox') {
-        const [w, s, e, n] = state.area.bbox;
-        setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
-        setMode('box');
-      } else {
-        const [lat, lon] = state.area.point;
-        setPointDraft({ lat: String(lat), lon: String(lon), radius: String(state.area.radius_km) });
-        setMode('point');
-        setBoxDraft(emptyBox);
-      }
+    if (!boxDraft && state.area.kind === 'bbox') {
+      const [w, s, e, n] = state.area.bbox;
+      setBoxDraft({ n: String(n), s: String(s), e: String(e), w: String(w) });
     }
     if (!dateDraft) setDateDraft({ start: state.start, end: state.end });
   }, [state, boxDraft, dateDraft]);
@@ -174,20 +163,14 @@ export default function MapCard() {
   const edges = parseEdges(b.n, b.s, b.e, b.w);
   const boxErr = validateEdges(b.n, b.s, b.e, b.w);
   const boxArea = edges ? areaKm2(edges.n, edges.s, edges.e, edges.w) : null;
-  const pointErr = validatePoint(pointDraft.lat, pointDraft.lon, pointDraft.radius);
-  const pLat = Number(pointDraft.lat), pLon = Number(pointDraft.lon), pRad = Number(pointDraft.radius);
-  const pointValid = !pointErr && [pLat, pLon, pRad].every(Number.isFinite);
-  const pointArea = pointValid ? pointAreaKm2(pRad) : null;
-
   const boxInRegion = edges && coverage ? coverage.regions.some((r) => insideRegion(edges, r.bbox as [number, number, number, number])) : false;
-  const pointInside = pointValid && coverage ? coverage.regions.some((r) => pointInRegion(pLat, pLon, r.bbox as [number, number, number, number])) : false;
 
-  const canAnalyzeArea = mode === 'box' ? (!!edges && !boxErr && !!boxInRegion) : (!!pointValid && !!pointInside);
-  const areaErr = mode === 'box' ? boxErr : pointErr;
-  const inRegion = mode === 'box' ? boxInRegion : pointInside;
-  const area = mode === 'box' ? boxArea : pointArea;
+  const canAnalyzeArea = !!edges && !boxErr && !!boxInRegion;
+  const areaErr = boxErr;
+  const inRegion = boxInRegion;
+  const area = boxArea;
 
-  const region = coverage?.regions.find((r) => mode === 'box' ? (edges && insideRegion(edges, r.bbox as [number, number, number, number])) : (pointValid && pointInRegion(pLat, pLon, r.bbox as [number, number, number, number]))) ?? coverage?.regions[0];
+  const region = coverage?.regions.find((r) => edges && insideRegion(edges, r.bbox as [number, number, number, number])) ?? coverage?.regions[0];
   const covStart = region?.start ?? '';
   const covEnd = region?.latest_date ?? region?.end ?? '';
   const dd = dateDraft ?? { start: state?.start ?? '', end: state?.end ?? '' };
@@ -232,9 +215,7 @@ export default function MapCard() {
     if (en !== null && es !== null && ee !== null && ew !== null) return [[es, ew], [en, ee]];
     return null;
   }, [mode, live, en, es, ee, ew]);
-  const circleBounds = useMemo((): [[number, number], [number, number]] | null =>
-    mode === 'point' && pointValid ? [[pLat - pRad / 111, pLon - pRad / 111], [pLat + pRad / 111, pLon + pRad / 111]] : null,
-  [mode, pLat, pLon, pRad, pointValid]);
+  const circleBounds = null;
   const coverageBounds = useMemo((): [[number, number], [number, number]] | null => {
     if (!coverage?.regions?.length) return null;
     const rs = coverage.regions.map((r) => r.bbox);
@@ -263,7 +244,6 @@ export default function MapCard() {
   }, [areaKeyValue, map, state]);
 
   const areaLabel = (() => {
-    if (mode === 'point') return area ? `Selected area · ${formatNumber(area)} km²` : null;
     if (!edges || !coverage) return null;
     const sa = coverage.starter_areas.find((x) => x.bbox[0] === edges.w && x.bbox[1] === edges.s && x.bbox[2] === edges.e && x.bbox[3] === edges.n);
     if (sa) return `${sa.label} · ${formatNumber(area!)} km²`;
@@ -282,8 +262,7 @@ export default function MapCard() {
   function analyze() {
     if (!canAnalyze) return;
     const patch: Partial<AppState> = { start: dd.start, end: dd.end };
-    if (mode === 'box' && edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
-    else if (mode === 'point' && pointValid) patch.area = { kind: 'point', point: [pLat, pLon], radius_km: pRad };
+    if (edges) patch.area = { kind: 'bbox', bbox: [edges.w, edges.s, edges.e, edges.n] };
     dispatch({ type: 'patch', patch });
     if (patch.area) lastAnalyzeKey.current = areaKey(patch.area);
     const target = mode === 'box' ? rectBounds : circleBounds;
@@ -317,7 +296,7 @@ export default function MapCard() {
     return { label: `the full record, ${state.start.slice(0,4)}–${state.end.slice(0,4)}`, focused: false };
   })();
 
-  const draftShapeBounds = mode === 'box' ? rectBounds : circleBounds;
+  const draftShapeBounds = rectBounds;
 
   return (
     <div className={styles.card}>
@@ -364,12 +343,11 @@ export default function MapCard() {
             <Rectangle bounds={[[state.cell[0] - 0.075, state.cell[1] - 0.075], [state.cell[0] + 0.075, state.cell[1] + 0.075]]}
               pathOptions={{ color: '#0f0f0f', weight: 2.5, fillColor: '#0f0f0f', fillOpacity: 0.12, dashArray: '6 4' }} />
           )}
-          {mode === 'box' && rectBounds && <Rectangle bounds={rectBounds} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
-          {mode === 'point' && pointValid && <Circle center={[pLat, pLon]} radius={pRad * 1000} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
-          <DrawController drawing={drawing && mode === 'box'} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onAbort={abortDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
+          {rectBounds && <Rectangle bounds={rectBounds} pathOptions={{ color: '#0f0f0f', weight: 2, dashArray: '6 4', fill: false }} />}
+          <DrawController drawing={drawing} onStart={startDraw} onMove={moveDraw} onEnd={endDraw} onAbort={abortDraw} onCancel={() => { setDrawing(false); setLive(null); startRef.current = null; }} />
         </MapContainer>
-        {mode === 'box' && <EdgeLabels map={map} bounds={rectBounds} />}
-        <DraftChip map={map} bounds={draftShapeBounds} label={areaLabel} aboveLabel={mode === 'box' && !!rectBounds} />
+        <EdgeLabels map={map} bounds={rectBounds} />
+        <DraftChip map={map} bounds={draftShapeBounds} label={areaLabel} aboveLabel={!!rectBounds} />
         <div className={styles.controls}>
           <div className={styles.controlGroup}>
             <button type="button" className={styles.controlBtn} aria-label="Zoom in" onClick={() => map?.zoomIn()}>+</button>
@@ -389,7 +367,7 @@ export default function MapCard() {
               </button>
               {drawing && <div className={styles.hint}>Drag on the map · Esc to cancel</div>}
             </div>
-            <button type="button" className={styles.controlBtn} aria-label="Delete area" onClick={() => { setBoxDraft(emptyBox); setPointDraft(emptyPoint); }}>✕</button>
+            <button type="button" className={styles.controlBtn} aria-label="Delete area" onClick={() => { setBoxDraft(emptyBox); }}>✕</button>
           </div>
         </div>
         <div className={styles.basemap} role="group" aria-label="Basemap">
@@ -438,13 +416,8 @@ export default function MapCard() {
         <div className={styles.row}>
           <div>
             <div className={styles.sizeLabel}>Area</div>
-            <div className={styles.modeGroup} role="group" aria-label="Area mode">
-              <button type="button" className={styles.modeBtn} aria-pressed={mode === 'box'} onClick={() => setMode('box')}>Box</button>
-              <button type="button" className={styles.modeBtn} aria-pressed={mode === 'point'} onClick={() => setMode('point')}>Point + radius</button>
-            </div>
           </div>
-          {mode === 'box' ? (
-            <div className={styles.compass}>
+          <div className={styles.compass}>
               {([
                 ['n', 'North edge', styles.compassN],
                 ['w', 'West edge', styles.compassW],
@@ -460,20 +433,13 @@ export default function MapCard() {
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"><rect x="4" y="4" width="16" height="16" rx="1" /></svg>
               </div>
             </div>
-          ) : (
-            <>
-              <label className={styles.label}>Latitude<input className={styles.input} inputMode="decimal" value={pointDraft.lat} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lat: e.target.value }))} /></label>
-              <label className={styles.label}>Longitude<input className={styles.input} inputMode="decimal" value={pointDraft.lon} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, lon: e.target.value }))} /></label>
-              <label className={styles.label}>Radius (km)<input className={styles.input} inputMode="decimal" value={pointDraft.radius} aria-describedby={areaErr || (!inRegion && pointValid) ? 'area-err' : undefined} onChange={(e) => setPointDraft((p) => ({ ...p, radius: e.target.value }))} /></label>
-            </>
-          )}
           <div className={styles.size}>
             <div className={styles.sizeLabel}>Size</div>
             <div className={styles.sizeValue}>{area !== null ? `${formatNumber(area)} km²` : '—'}</div>
           </div>
         </div>
         {areaErr ? <div id="area-err" className={styles.error}>{areaErr}</div>
-          : !inRegion && ((mode === 'box' && edges) || (mode === 'point' && pointValid)) ? <div id="area-err" className={styles.error}>This area is outside the covered regions.</div>
+          : !inRegion && edges ? <div id="area-err" className={styles.error}>This area is outside the covered regions.</div>
           : <div className={styles.helper}>Decimal degrees, with minus for south and west (18°S = −18). Drawing on the map fills these in.</div>}
 
         <div className={`${styles.row} ${styles.datesRow}`}>
@@ -487,7 +453,7 @@ export default function MapCard() {
               <button key={k} type="button" className={styles.modeBtn} aria-pressed={presetMatch(k)} onClick={() => { const r = presetRange(k); if (r) setDateDraft(r); }}>{label}</button>
             ))}
           </div>
-          <button className={styles.analyze} type="submit" disabled={!canAnalyze} aria-describedby={dateErr ? 'date-err' : (areaErr || (!inRegion && ((mode === 'box' && edges) || (mode === 'point' && pointValid)))) ? 'area-err' : undefined}>Analyze this area →</button>
+          <button className={styles.analyze} type="submit" disabled={!canAnalyze} aria-describedby={dateErr ? 'date-err' : (areaErr || (!inRegion && edges)) ? 'area-err' : undefined}>Analyze this area →</button>
         </div>
         {dateErr ? <div id="date-err" className={styles.error}>{dateErr}</div> : null}
       </form>

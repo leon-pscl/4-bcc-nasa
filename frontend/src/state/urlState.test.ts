@@ -41,9 +41,6 @@ describe('urlState', () => {
     expect(areaKey({ kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] })).toBe('bbox:110.7,-3.6,115.9,0.8');
     const reordered = { bbox: [110.7, -3.6, 115.9, 0.8], kind: 'bbox' } as unknown as typeof state.area;
     expect(areaKey(reordered)).toBe(areaKey(state.area));
-    expect(areaKey({ kind: 'point', point: [1.5, 103.8], radius_km: 25 })).toBe('point:1.5,103.8:25');
-    expect(areaKey({ kind: 'point', radius_km: 25, point: [1.5, 103.8] } as unknown as typeof state.area))
-      .toBe('point:1.5,103.8:25');
     expect(areaKey({ kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }))
       .not.toBe(areaKey({ kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.9] }));
   });

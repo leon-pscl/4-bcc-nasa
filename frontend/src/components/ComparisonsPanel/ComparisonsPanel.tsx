@@ -25,7 +25,7 @@ function downloadPng(chart: ChartJS | null, name: string) {
 }
 
 function fileBase(state: { area: AreaState; start: string; end: string }, kind: string) {
-  const a = state.area.kind === 'bbox' ? state.area.bbox.join('_') : `${state.area.point.join('_')}_r${state.area.radius_km}`;
+  const a = state.area.bbox.join('_');
   return `${kind}_${a}_${state.start}_${state.end}.png`;
 }
 

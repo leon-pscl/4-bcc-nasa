@@ -13,14 +13,9 @@ export default function MethodsPanel() {
   const { data: series } = useSeries(params);
   let regionName = coverage?.regions[0]?.name ?? '';
   if (coverage) {
-    if (state.area.kind === 'bbox') {
-      const [w,s,e,n] = state.area.bbox;
-      const edges = { n, s, e, w };
-      regionName = coverage.regions.find((r) => insideRegion(edges, r.bbox as [number,number,number,number]))?.name ?? regionName;
-    } else {
-      const [lat, lon] = state.area.point;
-      regionName = coverage.regions.find((r) => pointInRegion(lat, lon, r.bbox as [number,number,number,number]))?.name ?? regionName;
-    }
+    const [w,s,e,n] = state.area.bbox;
+    const edges = { n, s, e, w };
+    regionName = coverage.regions.find((r) => insideRegion(edges, r.bbox as [number,number,number,number]))?.name ?? regionName;
   }
   const { data, isLoading } = useMethods(regionName);
   const typical = series?.validation?.typical_year_error_pct;
