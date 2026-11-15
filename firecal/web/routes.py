@@ -63,6 +63,7 @@ def _json_response(payload, status=200, etag=None):
     resp.headers["Content-Type"] = "application/json"
     if etag:
         resp.headers["ETag"] = f'"{etag}"'
+    resp.headers["Cache-Control"] = "max-age=3600"
     return resp
 
 
@@ -266,21 +267,46 @@ def create_app(settings=None, dist_dir=None):
 
     def full_area(key):
         etag = _app_version(settings)
-        cache_key = _cache_key(request.args.to_dict(), etag + key)
+        args = request.args.to_dict()
+        start = args.get("start")
+        end = args.get("end")
+        cover = args.get("cover", "all")
+        cr = None
+        try:
+            from firecal.web.params import parse_area, area_cell_range
+            area, _region, _warn = parse_area(args, settings)
+            cr = area_cell_range(area)
+        except Exception:
+            pass
+        cache_key = (key, cr, start, end, cover, etag)
         hit = cache_get(cache_key)
         if hit is not None:
             body, ct, status = hit
             resp = make_response(body, status)
             resp.headers["Content-Type"] = ct
             resp.headers["ETag"] = f'"{etag}"'
+            resp.headers["Cache-Control"] = "max-age=3600"
             return resp
         request.parent_cache_key = cache_key
         request.parent_etag = etag
         return None
 
     def store(resp):
-        etag = _app_version(settings)
-        cache_key = _cache_key(request.args.to_dict(), etag + request.endpoint)
+        cache_key = getattr(request, "parent_cache_key", None)
+        if cache_key is None:
+            etag = _app_version(settings)
+            args = request.args.to_dict()
+            start = args.get("start")
+            end = args.get("end")
+            cover = args.get("cover", "all")
+            cr = None
+            try:
+                from firecal.web.params import parse_area, area_cell_range
+                area, _region, _warn = parse_area(args, settings)
+                cr = area_cell_range(area)
+            except Exception:
+                pass
+            cache_key = (request.endpoint, cr, start, end, cover, etag)
         cache_put(cache_key, (resp.get_data(), resp.headers.get("Content-Type", "application/json"), resp.status_code))
         return resp
 
@@ -921,5 +947,61 @@ def create_app(settings=None, dist_dir=None):
         import logging
         logging.getLogger(__name__).exception("unexpected error: %s", exc)
         return _json_response({"error": "internal server error"}, status=500)
+
+    # background warm-up: compute starter areas + outlook without blocking startup
+    try:
+        import threading, time, logging
+        _log = logging.getLogger(__name__)
+        def _warmup():
+            time.sleep(1)
+            t0 = time.time()
+            try:
+                client = app.test_client()
+                from firecal.web.params import load_coverage
+                cov = load_coverage(settings) or []
+                region_latest = {}
+                for r in cov:
+                    if r.get("name") and r.get("latest_date"):
+                        region_latest[r["name"]] = r["latest_date"]
+                regions_meta = {}
+                try:
+                    regions_meta = {r["name"]: r for r in json.load(open(os.path.join("config", "regions.json"))).get("regions", [])}
+                except Exception:
+                    pass
+                starter = []
+                try:
+                    starter = json.load(open(os.path.join("config", "regions.json"))).get("starter_areas", [])
+                except Exception:
+                    pass
+                for s in starter:
+                    region = s.get("region")
+                    bbox = s.get("bbox")
+                    if not bbox or not region:
+                        continue
+                    latest = region_latest.get(region)
+                    if not latest:
+                        continue
+                    # start = first of latest year? use 2003-01-01 as default start
+                    start = "2003-01-01"
+                    end = latest
+                    w, so, e, n = bbox
+                    qs = f"bbox={w},{so},{e},{n}&start={start}&end={end}"
+                    for cover in ("all", "forest", "farmland", "other"):
+                        for ep in ("/api/calendar", "/api/summary", "/api/series", "/api/map", "/api/hotspots"):
+                            try:
+                                client.get(f"{ep}?{qs}&cover={cover}")
+                            except Exception:
+                                pass
+                        # outlook (cover=all only)
+                        try:
+                            client.get(f"/api/outlook?bbox={w},{so},{e},{n}&start={start}&end={end}&cover=all")
+                        except Exception:
+                            pass
+                _log.info("warm-up completed in %.1fs", time.time() - t0)
+            except Exception as exc:
+                _log.warning("warm-up failed: %s", exc)
+        threading.Thread(target=_warmup, daemon=True).start()
+    except Exception:
+        pass
 
     return app

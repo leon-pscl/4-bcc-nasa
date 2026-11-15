@@ -136,6 +136,25 @@ def parse_area(args, settings):
     return area, region, warning
 
 
+def area_cell_range(area):
+    """Canonical integer cell-index range an area resolves to (for cache keys)."""
+    import math
+    g = area.grid_deg or 0.05
+    if area.radius_km is not None:
+        w, s, e, n = _area_bbox(area)
+    else:
+        w, s, e, n = area.w, area.s, area.e, area.n
+    def _idx_min(v):
+        return math.ceil(v / g - 0.5)
+    def _idx_max(v):
+        return math.floor(v / g - 0.5 - 1e-9)
+    lat_min = _idx_min(s)
+    lat_max = _idx_max(n)
+    lon_min = _idx_min(w)
+    lon_max = _idx_max(e)
+    return (lat_min, lat_max, lon_min, lon_max)
+
+
 def parse_query(args, settings):
     """Returns (Area, start, end, today, region, coverage_warning)."""
     start = args.get("start")
