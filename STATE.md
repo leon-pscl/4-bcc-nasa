@@ -14,6 +14,7 @@
 | outlook/app (step 3) | outlook/app | e7d09a0 | #132742361466 success | 82fa4ef | — | done | nothing |
 | outlook/pipeline-wiring (P6) | outlook/pipeline-wiring | cc5d4b1 | #43691840045 success | 0bd90de | — | done | nothing |
 | docs/readme (step 4) | docs/readme | c2f6575 | #132744901700 success | 26457b5 | v2-southeast-asia-outlook → 26457b5 | done | nothing |
+| Release v2.0.1 (cloud) | releasex | e93b2af | n/a (tag on releasex) | n/a | v2.0.1 → e93b2af | done | owner fast-forward main to v2.0.1 |
 
 ## Data on the PC
 
