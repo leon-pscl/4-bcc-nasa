@@ -75,6 +75,24 @@ Useful surfaces:
   `/api/cells.csv`, `/api/cells.parquet`, plus the usual calendar/summary/map/
   coverage endpoints.
 
+## Run it on the cloud (Azure App Service)
+
+The same app runs on Azure App Service (Linux, Python 3.12, B1 plan, East Asia region).
+
+- **Build**: `SCM_DO_BUILD_DURING_DEPLOYMENT=true` (Azure Oryx builds the frontend
+  and installs requirements.txt).
+- **Startup command**:
+
+  ```bash
+  gunicorn -w 1 --threads 4 --timeout 120 --bind=0.0.0.0:8000 app:app
+  ```
+
+- **App settings**: `DUCKDB_WEB_MEMORY_LIMIT=1GB`,
+  `DATA_PROCESSED=/home/site/wwwroot/data/processed`,
+  `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, **Always On** enabled.
+- **Data**: fetched by the deployment workflow from `DATA_ZIP_URL` (the
+  `processed_data_v2.zip` release asset) into the app's data directory.
+
 ## What the outlook is — and is not
 
 - It is **the historical pattern of where and when fire happens**, per cell and
