@@ -429,6 +429,7 @@ export default function MapCard() {
             ))}
           </div>
         )}
+        {outlookOn && state?.cover && state.cover !== 'all' ? <div className={styles.agg}>The outlook covers all fire types; the land-type filter doesn't apply to it.</div> : null}
         {outlookOn ? <div className={styles.agg}>15 km cells. Sea, lakes, barren land and ice are left out. &ldquo;fire activity&rdquo; = at least 1 hotspot in the cell that month.</div> : null}
         {!outlookOn && mapData?.aggregated_to != null ? <div className={styles.agg}>Shown on a coarser {mapData.aggregated_to}° grid to keep the map fast.</div> : null}
       </div>
