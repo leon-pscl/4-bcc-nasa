@@ -74,6 +74,13 @@ export const HotspotsResponseSchema = z.object({
   data_version: z.string(),
 });
 
+export const OutlookAreaQuerySchema = z.object({
+  bbox: z.array(z.number()).length(4).optional(),
+  point: z.array(z.number()).length(2).optional(),
+  radius_km: z.number().optional(),
+  area_km2: z.number().optional(),
+});
+
 export const OutlookMonthSchema = z.object({
   year: z.number(),
   month: z.number(),
@@ -110,7 +117,7 @@ export const OutlookSkillSchema = z.object({
 });
 
 export const OutlookResponseSchema = z.object({
-  query: AreaQuerySchema,
+  query: OutlookAreaQuerySchema,
   issued: z.string(),
   latest_data_date: z.string(),
   unit: z.string(),
