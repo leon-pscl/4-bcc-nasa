@@ -1,4 +1,4 @@
-# STATE — 2026-11-15 16:25 Asia/Manila
+# STATE — 2026-11-15 16:15 Asia/Manila
 
 | task | branch | last commit | CI (run, conclusion) | merged into pascual (hash) | tag | status | waiting on |
 |---|---|---|---|---|---|---|---|
@@ -12,13 +12,16 @@
 | fix/c1-slim 3E (F) | fix/c1-slim | 93f3367 | #98 in progress | not merged | — | waiting | Claude go-ahead to run the migration on E:\datasets (runs right before grid-edge rebuild); confirm #98 green |
 | outlook/data (step 2) | outlook/data | 3cff842 | #132727816142 success | 94cf7ce | v1.0.2-southeast-asia (safety tag, pre-outlook) | done | nothing — post-merge builds on E: (build-grid, build-monthly, issue) done |
 | outlook/app (step 3) | outlook/app | e7d09a0 | #132742361466 success | 82fa4ef | — | done | nothing |
-| outlook/pipeline-wiring (P6) | outlook/pipeline-wiring | cc5d4b1 | #43691840045 in progress | — | — | in progress | CI green, then merge |
+| outlook/pipeline-wiring (P6) | outlook/pipeline-wiring | cc5d4b1 | #43691840045 success | 0bd90de | — | done | nothing |
+| docs/readme (step 4) | docs/readme | c2f6575 | #132744901700 success | 26457b5 | v2-southeast-asia-outlook → 26457b5 | done | nothing |
 
 ## Data on the PC
 
 - Latest date in harmonized_daily: 2026-11-14
 - data_version: celldays 028172cf74f881b8; detections e1891b9a1dcd7822; harmonized_daily eefaaeca5d9a1664
 - Snapshot: E:\snapshots\v1-southeast-asia (hard links of E:\datasets\processed, 133 files, 1.824 GB, made 2026-11-15; manifest.csv with SHA-256 alongside)
+- Snapshot v1.0.2: E:\snapshots\v1.0.2-southeast-asia (hard links of E:\datasets\processed, 138 files, manifest.csv with SHA-256)
+- Snapshot v2: E:\snapshots\v2-southeast-asia-outlook (hard links incl. outlook datasets, 168 files, ~1.86 GB, manifest.csv with SHA-256)
 - Data root: E:\datasets (raw ~60.3 GB, processed ~4.4 GB incl. _staging 2.57 GB)
 
 ## Open questions
