@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from firecal.config import Settings
 from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, acquire_writer_lock,
-                            release_writer_lock, write_data_versions)
+                            release_writer_lock, sweep_leftovers, write_data_versions)
 
 
 def _step(name, fn):
@@ -183,6 +183,7 @@ def main():
 
     settings = Settings.from_env()
     _lock_fd = acquire_writer_lock(settings)
+    sweep_leftovers(settings)
 
     summary = {
         "cmd": args.cmd,

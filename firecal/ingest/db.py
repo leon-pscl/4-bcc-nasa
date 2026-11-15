@@ -237,101 +237,107 @@ def ingest_files(con, paths, region, bbox, settings, dataset="detections",
     written = []
     rows_written = 0
     changed = []  # (path, fp, stage_dir, years)
+    stage_dirs = []
 
-    for path in paths:
-        fp = file_fingerprint(path)
-        prev = files_state.get(os.path.abspath(path))
-        if prev and prev.get("fingerprint") == fp and not dry_run:
-            continue  # unchanged file: its partitions are already published
-        sensor = detect_sensor(con, path)
-        sql = build_sql(con, path, sensor, region, bbox)
-        file_key = fingerprint(fp)[:16]
-        import tempfile as _tf
-        os.makedirs(staging_root, exist_ok=True)
-        stage_dir = _tf.mkdtemp(prefix="_part_", dir=staging_root)
-        os.makedirs(stage_dir, exist_ok=True)
-        # one scan, partitioned by year
-        con.execute(
-            f"COPY ({sql}) TO '{stage_dir.replace(os.sep, '/')}' "
-            f"(FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (region, year), OVERWRITE_OR_IGNORE)"
-        )
-        stage_glob = f"{stage_dir.replace(os.sep, '/')}/*/*/*.parquet"
-        if not glob.glob(stage_glob):
-            # empty result (header-only response): nothing to write
+    try:
+        for path in paths:
+            fp = file_fingerprint(path)
+            prev = files_state.get(os.path.abspath(path))
+            if prev and prev.get("fingerprint") == fp and not dry_run:
+                continue  # unchanged file: its partitions are already published
+            sensor = detect_sensor(con, path)
+            sql = build_sql(con, path, sensor, region, bbox)
+            import tempfile as _tf
+            os.makedirs(staging_root, exist_ok=True)
+            stage_dir = _tf.mkdtemp(prefix="_part_", dir=staging_root)
+            stage_dirs.append(stage_dir)
+            # one scan, partitioned by year
+            con.execute(
+                f"COPY ({sql}) TO '{stage_dir.replace(os.sep, '/')}' "
+                f"(FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (region, year), OVERWRITE_OR_IGNORE)"
+            )
+            stage_glob = f"{stage_dir.replace(os.sep, '/')}/*/*/*.parquet"
+            if not glob.glob(stage_glob):
+                # empty result (header-only response): nothing to write
+                if not dry_run:
+                    files_state[os.path.abspath(path)] = {
+                        "fingerprint": fp, "years": [],
+                    }
+                continue
+            years = sorted(int(r[0]) for r in con.execute(
+                f"SELECT DISTINCT year FROM read_parquet('{stage_glob}')"
+            ).fetchall())
+            rows_written += con.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{stage_glob}')"
+            ).fetchone()[0]
+            changed.append((path, fp, stage_dir, years))
             if not dry_run:
                 files_state[os.path.abspath(path)] = {
-                    "fingerprint": fp, "years": [], "staging": None,
+                    "fingerprint": fp, "years": years,
                 }
-            continue
-        years = sorted(int(r[0]) for r in con.execute(
-            f"SELECT DISTINCT year FROM read_parquet('{stage_glob}')"
-        ).fetchall())
-        rows_written += con.execute(
-            f"SELECT COUNT(*) FROM read_parquet('{stage_glob}')"
-        ).fetchone()[0]
-        changed.append((path, fp, stage_dir, years))
-        if not dry_run:
-            files_state[os.path.abspath(path)] = {
-                "fingerprint": fp, "years": years, "staging": stage_dir,
-            }
 
-    if not changed:
+        if not changed:
+            if not dry_run:
+                save_state(settings, state)
+            return written, rows_written
+
+        affected_years = set()
+        for _, _, _, yrs in changed:
+            affected_years.update(yrs)
+
+        for year in sorted(affected_years):
+            key = partition_key(region, year)
+            part_fp = fingerprint(*[c[1] for c in changed], year)
+            if ds_state.get(key, {}).get("fingerprint") == part_fp and not dry_run:
+                continue
+            parts = []
+            new_parts_set = set()
+            for _, _, sd, yrs in changed:
+                if year in yrs:
+                    for f in _year_parts([(sd, yrs)], region, year):
+                        p = f.replace(os.sep, "/")
+                        parts.append(p)
+                        new_parts_set.add(p)
+            # preserve unchanged rows from the existing published partition
+            existing = dataset_dir(settings, dataset) / f"region={region}" / f"year={year}"
+            if existing.exists():
+                for f in existing.glob("*.parquet"):
+                    parts.append(str(f).replace(os.sep, "/"))
+            if not parts:
+                continue
+            union = "read_parquet([" + ", ".join(f"'{p}'" for p in parts) + "])"
+            # dedup by uid: new rows win; existing rows whose uid already appears in
+            # the new files are dropped (SP-over-NRT for the same observation). Using
+            # an anti-join avoids sorting the whole published partition, which OOMs
+            # on large years.
+            new_parts = [p for p in parts if p in new_parts_set]
+            old_parts = [p for p in parts if p not in new_parts_set]
+            cols = ("uid, sensor, platform, processing, latitude, longitude, acq_datetime_utc, "
+                    "date_local, daynight, confidence_raw, confidence_class, frp, scan, track, "
+                    "brightness, bright_t31, type, version, source_file, region, year")
+            if new_parts and old_parts:
+                new_union = "read_parquet([" + ", ".join(f"'{p}'" for p in new_parts) + "])"
+                old_union = "read_parquet([" + ", ".join(f"'{p}'" for p in old_parts) + "])"
+                part_sql = f"""
+                SELECT {cols} FROM {new_union}
+                UNION ALL
+                SELECT {cols} FROM {old_union} o
+                WHERE o.uid NOT IN (SELECT uid FROM {new_union})
+                """
+            else:
+                part_sql = f"SELECT {cols} FROM {union}"
+            if not dry_run:
+                write_partition(con, part_sql, settings, dataset, region, year)
+            ds_state[key] = {"fingerprint": part_fp}
+            written.append(key)
         if not dry_run:
             save_state(settings, state)
         return written, rows_written
-
-    affected_years = set()
-    for _, _, _, yrs in changed:
-        affected_years.update(yrs)
-
-    for year in sorted(affected_years):
-        key = partition_key(region, year)
-        part_fp = fingerprint(*[c[1] for c in changed], year)
-        if ds_state.get(key, {}).get("fingerprint") == part_fp and not dry_run:
-            continue
-        parts = []
-        new_parts_set = set()
-        for _, _, sd, yrs in changed:
-            if year in yrs:
-                for f in _year_parts([(sd, yrs)], region, year):
-                    p = f.replace(os.sep, "/")
-                    parts.append(p)
-                    new_parts_set.add(p)
-        # preserve unchanged rows from the existing published partition
-        existing = dataset_dir(settings, dataset) / f"region={region}" / f"year={year}"
-        if existing.exists():
-            for f in existing.glob("*.parquet"):
-                parts.append(str(f).replace(os.sep, "/"))
-        if not parts:
-            continue
-        union = "read_parquet([" + ", ".join(f"'{p}'" for p in parts) + "])"
-        # dedup by uid: new rows win; existing rows whose uid already appears in
-        # the new files are dropped (SP-over-NRT for the same observation). Using
-        # an anti-join avoids sorting the whole published partition, which OOMs
-        # on large years.
-        new_parts = [p for p in parts if p in new_parts_set]
-        old_parts = [p for p in parts if p not in new_parts_set]
-        cols = ("uid, sensor, platform, processing, latitude, longitude, acq_datetime_utc, "
-                "date_local, daynight, confidence_raw, confidence_class, frp, scan, track, "
-                "brightness, bright_t31, type, version, source_file, region, year")
-        if new_parts and old_parts:
-            new_union = "read_parquet([" + ", ".join(f"'{p}'" for p in new_parts) + "])"
-            old_union = "read_parquet([" + ", ".join(f"'{p}'" for p in old_parts) + "])"
-            part_sql = f"""
-            SELECT {cols} FROM {new_union}
-            UNION ALL
-            SELECT {cols} FROM {old_union} o
-            WHERE o.uid NOT IN (SELECT uid FROM {new_union})
-            """
-        else:
-            part_sql = f"SELECT {cols} FROM {union}"
-        if not dry_run:
-            write_partition(con, part_sql, settings, dataset, region, year)
-        ds_state[key] = {"fingerprint": part_fp}
-        written.append(key)
-    if not dry_run:
-        save_state(settings, state)
-    return written, rows_written
+    finally:
+        # staging is never read again once partitions are published (or the run
+        # failed and the fingerprint was not saved) — remove it unconditionally
+        for sd in stage_dirs:
+            shutil.rmtree(sd, ignore_errors=True)
 
 
 def _year_parts(stagings, region, year):

@@ -80,6 +80,7 @@ class Settings:
     DUCKDB_PIPELINE_MEMORY_LIMIT: str = "2GB"
     DUCKDB_PIPELINE_THREADS: int = 4
     DUCKDB_TEMP_DIR: str = "/tmp/duckdb"
+    DUCKDB_MAX_TEMP_DIRECTORY_SIZE: str = "20GB"
 
     @classmethod
     def from_env(cls, env_path: str = ".env") -> "Settings":
@@ -94,7 +95,8 @@ class Settings:
                 s.API_CACHE_MB = int(cache_mb)
             except ValueError:
                 pass
-        for key in ("DUCKDB_WEB_MEMORY_LIMIT", "DUCKDB_PIPELINE_MEMORY_LIMIT", "DUCKDB_TEMP_DIR"):
+        for key in ("DUCKDB_WEB_MEMORY_LIMIT", "DUCKDB_PIPELINE_MEMORY_LIMIT", "DUCKDB_TEMP_DIR",
+                    "DUCKDB_MAX_TEMP_DIRECTORY_SIZE"):
             val = os.environ.get(key, file_values.get(key))
             if val:
                 setattr(s, key, val)
