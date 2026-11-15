@@ -14,8 +14,9 @@ import time
 from datetime import datetime, timezone
 
 from firecal.config import Settings
-from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, acquire_writer_lock,
-                            release_writer_lock, sweep_leftovers, write_data_versions)
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, MONTHLY_CELLS, OUTLOOK,
+                             acquire_writer_lock, release_writer_lock, sweep_leftovers,
+                             write_data_versions)
 
 
 def _step(name, fn):
@@ -93,7 +94,7 @@ def run_add_region(name, settings, summary):
     _, d = _step("harmonize", harmonize)
     summary["steps"].append({"name": "harmonize", "duration_s": round(d, 2)})
 
-    versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+    versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
     summary["data_version"] = versions
     print("data_version:", versions)
 
@@ -131,7 +132,7 @@ def run_update(region, all_regions, settings, recalibrate, summary):
             finally:
                 con.close()
             from firecal.dataset import write_data_versions
-            write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+            write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
         _, d = _step("ingest", ingest)
         summary["steps"].append({"name": f"ingest:{r}", "duration_s": round(d, 2)})
 
@@ -164,7 +165,25 @@ def run_update(region, all_regions, settings, recalibrate, summary):
         _, d = _step("harmonize", harmonize)
         summary["steps"].append({"name": f"harmonize:{r}", "duration_s": round(d, 2)})
 
-    versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+        # 5. outlook: rebuild monthly cells for the changed years, re-issue.
+        # tolerated on failure: daily data freshness beats the experimental outlook;
+        # the warning is recorded in the run summary either way.
+        def outlook():
+            from firecal.outlook.monthly import build_monthly, _latest_date
+            from firecal.outlook.issue import build_outlook
+            build_monthly(settings, r)
+            latest = _latest_date(settings, r)
+            if latest:
+                build_outlook(settings, r, latest)
+        t0 = time.time()
+        try:
+            outlook()
+            summary["steps"].append({"name": f"outlook:{r}", "duration_s": round(time.time() - t0, 2)})
+        except Exception as exc:
+            print(f"outlook step failed (tolerated): {exc}")
+            summary.setdefault("warnings", []).append(f"outlook:{r}: {exc}")
+
+    versions = write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
     summary["data_version"] = versions
     print("data_version:", versions)
 

@@ -1,4 +1,4 @@
-"""CLI for firecal.ingest: FIRMS CSV -> detections dataset (C1).
+﻿"""CLI for firecal.ingest: FIRMS CSV -> detections dataset (C1).
 
 Reads files in chunks with DuckDB and writes Hive-partitioned Parquet
 (region, year). Only partitions whose inputs changed are rebuilt.
@@ -11,7 +11,7 @@ import sys
 import time
 
 from firecal.config import Settings
-from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, load_state,
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, MONTHLY_CELLS, OUTLOOK, load_state,
                              write_data_versions, acquire_writer_lock,
                              release_writer_lock, sweep_leftovers)
 
@@ -59,7 +59,7 @@ def main(lock_fd=None):
         print(f"rows: {rows}, partitions written: {len(written)}, time {time.time() - t0:.1f}s")
         if written:
             print("partitions:", written[:10], "..." if len(written) > 10 else "")
-        write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+        write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
     finally:
         if own:
             release_writer_lock(lock_fd)
@@ -67,3 +67,5 @@ def main(lock_fd=None):
 
 if __name__ == "__main__":
     main()
+
+

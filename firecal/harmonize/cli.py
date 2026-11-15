@@ -1,4 +1,4 @@
-"""CLI for firecal.harmonize: rebuild calibration + harmonized partitions."""
+﻿"""CLI for firecal.harmonize: rebuild calibration + harmonized partitions."""
 
 import argparse
 import json
@@ -6,7 +6,7 @@ import os
 import time
 
 from firecal.config import Settings
-from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, write_data_versions,
+from firecal.dataset import (CELLDAYS, DETECTIONS, HARMONIZED, MONTHLY_CELLS, OUTLOOK, write_data_versions,
                              acquire_writer_lock, release_writer_lock, validation_path,
                              sweep_leftovers)
 
@@ -105,7 +105,7 @@ def main(lock_fd=None):
                     print("latest_date:", latest)
             finally:
                 con.close()
-        write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED])
+        write_data_versions(settings, [DETECTIONS, CELLDAYS, HARMONIZED, MONTHLY_CELLS, OUTLOOK])
     finally:
         # the lock covers everything that writes data/processed (validation.json,
         # coverage.json, data_version.json), not just the parquet rebuild
@@ -114,3 +114,5 @@ def main(lock_fd=None):
 
 if __name__ == "__main__":
     main()
+
+
