@@ -1,4 +1,4 @@
-# STATE — 2026-11-15 16:15 Asia/Manila
+# STATE — 2026-11-18 00:40 Asia/Manila
 
 | task | branch | last commit | CI (run, conclusion) | merged into pascual (hash) | tag | status | waiting on |
 |---|---|---|---|---|---|---|---|
@@ -16,10 +16,16 @@
 | docs/readme (step 4) | docs/readme | c2f6575 | #132744901700 success | 26457b5 | v2-southeast-asia-outlook → 26457b5 | done | nothing |
 | Release v2.0.1 (cloud) | releasex | e93b2af | n/a (tag on releasex) | n/a | v2.0.1 → e93b2af | done | owner fast-forward main to v2.0.1 |
 | Release v2.1 (Azure merge) | release/v2.1 | 95e80d7 | n/a (merge into pascual) | 95e80d7 | v2.1-southeast-asia-outlook → 95e80d7 | done | owner FF main via `git push origin v2.1-southeast-asia-outlook^{commit}:refs/heads/main`; team-lead uploads processed_data_v2.zip |
-| Release v2.1.1 (rows_note) | pascual | 116cae4 | n/a | 116cae4 | v2.1.1-southeast-asia-outlook → 116cae4 | done | owner FF main via `git push origin v2.1.1-southeast-asia-outlook^{commit}:refs/heads/main` |
+| Release v2.1.1 (rows_note) | pascual | 116cae4 | #138 success | 116cae4 | v2.1.1-southeast-asia-outlook → 116cae4 | done | nothing — main since fast-forwarded to v2.2.4 |
+| Release v2.2 … v2.2.4 (UI polish, typecheck fix) | pascual | 7ed9934 | #154 success (v2.2.4) | 7ed9934 | v2.2/v2.2.1/v2.2.2/v2.2.3/v2.2.4-southeast-asia-outlook → cd700c0/9c5f675/621d2ec/ff9ff74/7ed9934 | done | nothing — `origin/main` = 7ed9934 |
+| cleanup: sample-data, docs refs, FIRMS CSVs | pascual | ab3e552 | no own run (pushed with 6189cad); covered by #157 success | ab3e552 | — | done | nothing |
+| cleanup: drop inbox task notes | pascual | 6189cad | #157 success | 6189cad | — | done | nothing |
+| fix/clear-errors (calendar cause, hotspots loading) | fix/clear-errors | 9d9f07d | #158 success; merge #159 success | 852f7b3 | — | done | nothing |
+| fix/hotspot-error (hotspot query error) | fix/hotspot-error | ef3b72b | #160 success; merge #161 success | ef07e85 | — | done | nothing |
 
 ## Data on the PC
 
+- Live deployment checked by the owner 2026-11-18: `/health` ok, `data_version eefaaeca5d9a1664`, latest date 2026-11-14, 75 partitions packaged in `data/processed`, `/api/hotspots` returns rows. (A screenshot showing "Full record end 2026-11-07" came from a different instance, not this one.)
 - Latest date in harmonized_daily: 2026-11-14
 - data_version: celldays 028172cf74f881b8; detections e1891b9a1dcd7822; harmonized_daily eefaaeca5d9a1664
 - Snapshot: E:\snapshots\v1-southeast-asia (hard links of E:\datasets\processed, 133 files, 1.824 GB, made 2026-11-15; manifest.csv with SHA-256 alongside)
