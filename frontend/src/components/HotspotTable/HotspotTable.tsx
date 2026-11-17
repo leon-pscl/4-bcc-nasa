@@ -48,16 +48,18 @@ export default function HotspotTable() {
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) { setLastKey(key); setPage(1); }
 
-  const { data, isLoading, isFetching } = useHotspots(params, page, showSensors, visible);
+  const { data, isFetching } = useHotspots(params, page, showSensors, visible);
 
   if (!valid) return null;
 
+  const loading = !visible || data === undefined;
   const total = data?.total ?? 0;
   const pageSize = data?.page_size ?? 100;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const curPage = Math.min(page, pages);
 
   const headingRight = (() => {
+    if (loading) return null;
     if (focus) {
       const [ys, ms] = focus.split('-');
       const label = `${MONTH_FULL[Number(ms) - 1]} ${ys}`;
@@ -75,8 +77,8 @@ export default function HotspotTable() {
       <div className={styles.controls}>
         <label className={styles.check}><input type="checkbox" checked={showSensors} onChange={(e) => { setShowSensors(e.target.checked); setPage(1); }} /> Show sensor details</label>
       </div>
-      {isFetching && !isLoading ? <p className={styles.muted}>Updating…</p> : null}
-  {isLoading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>{data?.rows_note ?? 'No hotspots in this area and date range.'}</p> : (
+      {isFetching && !loading ? <p className={styles.muted}>Updating…</p> : null}
+  {loading ? <p className={styles.muted}>Loading hotspots…</p> : total === 0 ? <p className={styles.muted}>{data?.rows_note ?? 'No hotspots in this area and date range.'}</p> : (
         <>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
