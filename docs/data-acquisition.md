@@ -254,7 +254,7 @@ names, which include the product, the layer and the year's start day (`doyYYYY00
 
 ## 4. Other data already in the repo
 
-- `sample-data/modis.csv` and `sample-data/viirs.csv`: FIRMS NRT area API CSVs for East
+- `tests/fixtures/modis.csv` and `tests/fixtures/viirs.csv`: FIRMS NRT area API CSVs for East
   Bolivia (box `-64,-18,-60,-14`), UTC 2026-09-26 to 2026-10-01. These are the test
   reference (2,919 rows; see `instructions.md` 2.4), not app data: East Bolivia is a test
   region only. They're committed; don't re-download them.

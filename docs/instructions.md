@@ -80,8 +80,8 @@ Where each stage stands (13 Nov 2026, evening):
 | 6 Frontend | Map card partly built (below) |
 | 7 Pipeline, Docker | `Dockerfile` and `docker-compose.yml` exist; nothing else |
 
-Other files: `docs/` (this file, `frontend-tasks.md`, `ui_settings.md`, `dashboard.jpg`,
-`refs/`), `.env.example`, `.gitignore` (data, Python, Node and `.env` are ignored) and
+Other files: `docs/` (this file, `frontend-tasks.md`, `ui_settings.md`),
+`.env.example`, `.gitignore` (data, Python, Node and `.env` are ignored) and
 `.dockerignore`.
 
 **`frontend/` today** (part of Stage 6b, built early):
@@ -226,7 +226,7 @@ datetime is `acq_date` plus those hours and minutes.
 **Grid cells.** `cell = (floor(lat / GRID_DEG), floor(lon / GRID_DEG))`. Use `floor`, never
 truncate: `floor(-17.8757 / 0.05)` is `-358`, but `int()` gives `-357`.
 
-**Reference numbers.** `sample-data/` (restored in Stage 0) holds two FIRMS NRT CSVs for the
+**Reference numbers.** `tests/fixtures/` holds two FIRMS NRT CSVs for the
 East Bolivia box (W −64, S −18, E −60, N −14): `modis.csv` from `MODIS_NRT` and `viirs.csv`
 from `VIIRS_SNPP_NRT`. They cover UTC 2026-09-26 00:18 to 2026-10-01 05:55, which is local
 days 2026-09-25 to 2026-10-01. With the rules above, and with no confidence or type filters,
@@ -270,7 +270,7 @@ are smaller. That's why the series counts cells, not rows (Stage 2).
 6. **Code style:** the repo owner is learning. Use small, well-commented functions, type
    hints, and pure functions where possible. Put CLI wrappers in separate `cli.py` files.
 7. **Tests:** use `pytest`. Tests never touch the network. Test inputs are small fixtures in
-   `tests/fixtures/` (plus `sample-data/`). Every function that takes a date must accept
+   `tests/fixtures/`. Every function that takes a date must accept
    `today` as a parameter, so tests don't depend on the clock.
 8. **Git:** use one branch per stage (`stage-0-groundwork`, `stage-1a-fetch`, and so on) with
    small commits. Never commit `data/raw/`, `data/processed/`, `.env` or a FIRMS `MAP_KEY`.
@@ -355,7 +355,7 @@ firecal/                      Python package (all backend code)
     __init__.py  params.py  routes.py  images.py
 app.py                        thin entry point: app = create_app()
 requirements.txt  requirements-dev.txt  pytest.ini
-sample-data/                  modis.csv + viirs.csv, the reference sample (section 2.4)
+tests/fixtures/modis.csv, viirs.csv  the reference sample (section 2.4)
 scripts/make_mocks.py         Stage 5: writes frontend/public/mock/*.json
 frontend/                     Stage 6: React + TypeScript + Vite
   package.json  package-lock.json  vite.config.ts  tsconfig.json  eslint.config.js  .nvmrc

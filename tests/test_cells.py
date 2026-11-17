@@ -9,8 +9,8 @@ from firecal.cells.db import build_celldays, validate_meta
 
 def _sample_detections():
     import tempfile, os
-    modis = read_firms_csv("sample-data/modis.csv")
-    viirs = read_firms_csv("sample-data/viirs.csv")
+    modis = read_firms_csv("tests/fixtures/modis.csv")
+    viirs = read_firms_csv("tests/fixtures/viirs.csv")
     return pd.concat([modis, viirs], ignore_index=True)
 
 

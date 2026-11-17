@@ -20,7 +20,6 @@ COPY firecal/ ./firecal/
 COPY app.py ./
 COPY config/ ./config/
 COPY tests/ ./tests/
-COPY sample-data ./sample-data/
 COPY frontend/public/mock ./frontend/public/mock/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist/
 ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
@@ -41,7 +40,6 @@ COPY firecal/ ./firecal/
 COPY app.py ./
 COPY config/ ./config/
 COPY tests/ ./tests/
-COPY sample-data ./sample-data/
 RUN printf '#!/bin/sh\nexec python -m firecal.pipeline "$@"\n' > /usr/local/bin/pipeline \
     && chmod +x /usr/local/bin/pipeline
 ENV DATA_RAW=/app/data/raw DATA_PROCESSED=/app/data/processed
