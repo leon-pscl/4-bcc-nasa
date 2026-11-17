@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom/vitest';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import HotspotTable from './HotspotTable';
+import { ApiError } from '../../api/client';
 
-const hotspots = vi.hoisted(() => ({ data: undefined as unknown, isFetching: false }));
+const hotspots = vi.hoisted(() => ({ data: undefined as unknown, isFetching: false, error: null as Error | null }));
+let observerCallback: IntersectionObserverCallback | null = null;
 
 vi.mock('../../state/useAppState', () => ({
   useReadyAppState: () => ({
@@ -19,7 +21,10 @@ vi.mock('../../api/hooks', () => ({
 
 describe('HotspotTable', () => {
   beforeEach(() => {
+    hotspots.error = null;
+    observerCallback = null;
     vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { observerCallback = callback; }
       observe() {}
       disconnect() {}
     });
@@ -33,6 +38,15 @@ describe('HotspotTable', () => {
     render(<HotspotTable />);
     expect(screen.getByText('Loading hotspots…')).toBeInTheDocument();
     expect(screen.queryByText('No hotspots in this area and date range.')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 detections')).not.toBeInTheDocument();
+  });
+
+  it('shows the ApiError instead of loading once visible', () => {
+    hotspots.error = new ApiError(500, 'internal server error');
+    render(<HotspotTable />);
+    act(() => observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByText('Couldn’t load hotspots (500 – internal server error).')).toBeInTheDocument();
+    expect(screen.queryByText('Loading hotspots…')).not.toBeInTheDocument();
     expect(screen.queryByText('0 detections')).not.toBeInTheDocument();
   });
 });
