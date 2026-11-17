@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useReadyAppState } from '../../state/useAppState';
+import { ApiError } from '../../api/client';
 import { useCalendar, useSummary, useQueryParams } from '../../api/hooks';
 import { COUNT_RAMP, ANOMALY_BINS, countColor, anomalyColor, textOn, countBins, binLabels } from '../../lib/colors';
 import { formatNumber, formatSignedPct, formatDate, formatLat, formatLon } from '../../lib/format';
@@ -22,7 +23,12 @@ export default function BurningCalendar() {
 
   if (!valid) return <section className={styles.card}>Choose a valid area and dates, then Analyze.</section>;
   if (isLoading) return <section className={styles.card}>Loading calendar…</section>;
-  if (error) return <section className={styles.card}>Couldn’t load calendar.</section>;
+  if (error) {
+    const detail = error instanceof ApiError
+      ? [error.status, error.message].filter(Boolean).join(' – ')
+      : 'unexpected response from the server';
+    return <section className={styles.card}>Couldn’t load calendar ({detail}).</section>;
+  }
   if (!data) return null;
 
   const view = state.view;

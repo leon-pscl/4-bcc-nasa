@@ -3,8 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BurningCalendar from './BurningCalendar';
+import { ApiError } from '../../api/client';
 
 const dispatch = vi.fn();
+let calendarError: Error | null = null;
 let state: { area: { kind: 'bbox'; bbox: [number, number, number, number] }; start: string; end: string; view: 'count' | 'anomaly'; tab: 'comparisons' | 'watchlist' | 'methods'; focus?: string };
 
 const cal = {
@@ -32,7 +34,7 @@ const cov = { regions: [{ name: 'southeast_asia', label: 'Southeast Asia', bbox:
 vi.mock('../../state/useAppState', () => ({ useAppState: () => ({ state, dispatch }),
     useReadyAppState: () => ({ state, dispatch }) }));
 vi.mock('../../api/hooks', () => ({
-  useCalendar: () => ({ data: cal, isLoading: false, error: null }),
+  useCalendar: () => ({ data: cal, isLoading: false, error: calendarError }),
   useSummary: () => ({ data: sum }),
   useCoverage: () => ({ data: cov }),
   useQueryParams: () => ({ params: 'bbox=110.7,-3.6,115.9,0.8&start=2003-01-01&end=2026-11-12', valid: true, coverage: cov }),
@@ -41,7 +43,20 @@ vi.mock('../../api/hooks', () => ({
 describe('BurningCalendar', () => {
   beforeEach(() => {
     dispatch.mockClear();
+    calendarError = null;
     state = { area: { kind: 'bbox', bbox: [110.7, -3.6, 115.9, 0.8] }, start: '2003-01-01', end: '2026-11-12', view: 'count', tab: 'comparisons', focus: undefined };
+  });
+
+  it('shows the status and message for an ApiError', () => {
+    calendarError = new ApiError(500, 'internal server error');
+    render(<BurningCalendar />);
+    expect(screen.getByText('Couldn’t load calendar (500 – internal server error).')).toBeInTheDocument();
+  });
+
+  it('hides the raw error text for a non-ApiError', () => {
+    calendarError = new Error('zod: invalid response');
+    render(<BurningCalendar />);
+    expect(screen.getByText('Couldn’t load calendar (unexpected response from the server).')).toBeInTheDocument();
   });
   afterEach(() => cleanup());
 
